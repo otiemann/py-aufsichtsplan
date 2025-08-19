@@ -5,6 +5,8 @@ import threading
 import webbrowser
 import logging
 import logging.config
+import subprocess
+import urllib.request
 
 import uvicorn
 
@@ -33,13 +35,40 @@ def get_data_dir() -> str:
 	return path
 
 
-def open_browser_later(url: str, delay_seconds: float = 1.5) -> None:
-	def _op():
-		time.sleep(delay_seconds)
+def try_open_url(url: str) -> None:
+	# 1) Standard-Webbrowser
+	try:
+		if webbrowser.open(url):
+			return
+	except Exception:
+		pass
+	# 2) Windows: os.startfile
+	if os.name == "nt":
 		try:
-			webbrowser.open(url)
+			os.startfile(url)  # type: ignore[attr-defined]
+			return
 		except Exception:
 			pass
+		# 3) Windows: cmd start
+		try:
+			subprocess.run(["cmd", "/c", "start", "", url], check=False)
+			return
+		except Exception:
+			pass
+
+
+def open_browser_when_ready(url: str, timeout_seconds: float = 15.0) -> None:
+	def _op():
+		deadline = time.time() + timeout_seconds
+		# Poll, bis der Server eine Antwort liefert (oder Timeout)
+		while time.time() < deadline:
+			try:
+				with urllib.request.urlopen(url, timeout=1.5) as resp:  # nosec B310
+					if 200 <= getattr(resp, "status", 200) < 500:
+						break
+			except Exception:
+				time.sleep(0.5)
+		try_open_url(url)
 	threading.Thread(target=_op, daemon=True).start()
 
 
@@ -97,7 +126,8 @@ if __name__ == "__main__":
 	log_file = os.path.join(data_dir, "app.log")
 	log_config = build_logging_config(log_file)
 
-	open_browser_later("http://127.0.0.1:8000/plan/generate")
+	url = "http://127.0.0.1:8000/plan/generate"
+	open_browser_when_ready(url)
 
 	if fastapi_app is not None:
 		uvicorn.run(
