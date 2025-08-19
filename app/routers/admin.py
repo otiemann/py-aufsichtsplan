@@ -13,7 +13,15 @@ from ..models import Teacher, TeacherQuota, Floor
 
 router = APIRouter()
 
-templates = Jinja2Templates(directory="app/templates")
+# Template-Verzeichnis aus main.py übernehmen
+import sys
+from pathlib import Path
+if hasattr(sys.modules.get('app.main'), 'TEMPLATES_DIR'):
+    from ..main import TEMPLATES_DIR
+    templates = Jinja2Templates(directory=TEMPLATES_DIR)
+else:
+    # Fallback
+    templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("/")

@@ -67,16 +67,19 @@
 </head>
 
 <body>
-    <header>
-        <img src="/static/logo.png" alt="Logo" class="logo" />
-        <h1 style="margin:0;">Pausenaufsicht</h1>
-        <nav>
-            <a href="/">Home</a>
-            <a href="/admin">Admin</a>
-            <a href="/admin/teachers">Lehrkräfte</a>
-            <a href="/plan/floors">Stockwerke</a>
-            <a href="/plan/generate">Plan/Export</a>
-        </nav>
+    <header style="background: #f8f9fa; padding: 1rem; margin: -2rem -2rem 2rem -2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <img src="/static/logo.png" alt="Logo" class="logo" />
+                <h1 style="margin:0; color: #2c3e50;">Pausenaufsicht</h1>
+            </div>
+            <nav style="display: flex; gap: 1rem;">
+                <a href="/" style="text-decoration: none; padding: 0.5rem 1rem; background: #3498db; color: white; border-radius: 5px;">🏠 Start</a>
+                <a href="/admin/teachers" style="text-decoration: none; padding: 0.5rem 1rem; background: #e74c3c; color: white; border-radius: 5px;">👥 Lehrkräfte</a>
+                <a href="/plan/floors" style="text-decoration: none; padding: 0.5rem 1rem; background: #f39c12; color: white; border-radius: 5px;">🏢 Stockwerke</a>
+                <a href="/plan/generate" style="text-decoration: none; padding: 0.5rem 1rem; background: #27ae60; color: white; border-radius: 5px;">📅 Plan</a>
+            </nav>
+        </div>
     </header>
 
     {% if request.cookies.get('flash') %}

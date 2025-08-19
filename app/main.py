@@ -29,11 +29,21 @@ STATIC_CANDIDATES = [
 TEMPLATES_DIR = next((p for p in TEMPLATE_CANDIDATES if os.path.isdir(p)), TEMPLATE_CANDIDATES[0])
 STATIC_DIR = next((p for p in STATIC_CANDIDATES if os.path.isdir(p)), STATIC_CANDIDATES[0])
 
-# Logging-Hinweis, falls etwas fehlt
-if not os.path.isdir(TEMPLATES_DIR):
-	print(f"[WARN] Templates-Verzeichnis nicht gefunden: {TEMPLATES_DIR}")
-if not os.path.isdir(STATIC_DIR):
-	print(f"[WARN] Static-Verzeichnis nicht gefunden: {STATIC_DIR}")
+# Logging-Hinweis mit mehr Details
+import sys
+print(f"[INFO] Python ausführbar: {sys.executable}")
+print(f"[INFO] Arbeitsverzeichnis: {os.getcwd()}")
+print(f"[INFO] APP_RESOURCES_DIR: {RES_DIR_ENV}")
+print(f"[INFO] Templates-Verzeichnis: {TEMPLATES_DIR} (existiert: {os.path.isdir(TEMPLATES_DIR)})")
+print(f"[INFO] Static-Verzeichnis: {STATIC_DIR} (existiert: {os.path.isdir(STATIC_DIR)})")
+
+# Zeige welche Templates gefunden werden
+if os.path.isdir(TEMPLATES_DIR):
+	try:
+		templates_found = os.listdir(TEMPLATES_DIR)
+		print(f"[INFO] Gefundene Templates: {templates_found}")
+	except Exception as e:
+		print(f"[ERROR] Fehler beim Lesen der Templates: {e}")
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
@@ -48,7 +58,7 @@ def on_startup() -> None:
 
 @app.get("/")
 async def root(request: Request):
-    return templates.TemplateResponse("base.html", {"request": request, "content": "Willkommen"})
+    return templates.TemplateResponse("home.html", {"request": request})
 
 
 # Include routers

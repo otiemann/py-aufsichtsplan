@@ -129,7 +129,7 @@ if __name__ == "__main__":
 	log_file = os.path.join(data_dir, "app.log")
 	log_config = build_logging_config(log_file)
 
-	url = "http://127.0.0.1:8000/plan/generate"
+	url = "http://127.0.0.1:8000"
 	open_browser_when_ready(url)
 
 	# Import jetzt, nachdem ENV & CWD gesetzt sind
