@@ -8,6 +8,12 @@ import logging.config
 
 import uvicorn
 
+# Direktimport der App, damit PyInstaller alle Module erkennt
+try:
+	from app.main import app as fastapi_app  # type: ignore
+except Exception:
+	fastapi_app = None
+
 
 def get_base_dir() -> str:
 	base = getattr(sys, "_MEIPASS", None)
@@ -27,7 +33,6 @@ def open_browser_later(url: str, delay_seconds: float = 1.5) -> None:
 
 
 def build_logging_config(log_file: str) -> dict:
-	# Logging in Datei schreiben, keine Farb- und TTY-Abhängigkeiten
 	return {
 		"version": 1,
 		"disable_existing_loggers": False,
@@ -69,9 +74,7 @@ def build_logging_config(log_file: str) -> dict:
 
 if __name__ == "__main__":
 	base_dir = get_base_dir()
-	# Templates/Static im EXE-Paket suchen
 	os.environ["APP_RESOURCES_DIR"] = base_dir
-	# DB im Arbeitsordner (neben EXE)
 	exe_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 	os.chdir(exe_dir)
 
@@ -79,10 +82,21 @@ if __name__ == "__main__":
 	log_config = build_logging_config(log_file)
 
 	open_browser_later("http://127.0.0.1:8000/plan/generate")
-	uvicorn.run(
-		"app.main:app",
-		host="127.0.0.1",
-		port=8000,
-		reload=False,
-		log_config=log_config,
-	)
+
+	if fastapi_app is not None:
+		uvicorn.run(
+			fastapi_app,
+			host="127.0.0.1",
+			port=8000,
+			reload=False,
+			log_config=log_config,
+		)
+	else:
+		# Fallback: Import zur Laufzeit (sollte dank Direktimport oben selten nötig sein)
+		uvicorn.run(
+			"app.main:app",
+			host="127.0.0.1",
+			port=8000,
+			reload=False,
+			log_config=log_config,
+		)

@@ -27,7 +27,19 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --noconsole --onefile --name vertretungsplan --add-data "app;app" start.py
+          pyinstaller --noconsole --onefile --name vertretungsplan --add-data "app;app" ^
+            --hidden-import fastapi ^
+            --hidden-import starlette ^
+            --hidden-import pydantic ^
+            --hidden-import anyio ^
+            --hidden-import h11 ^
+            --hidden-import typing_extensions ^
+            --hidden-import jinja2 ^
+            --hidden-import sqlalchemy ^
+            --hidden-import reportlab ^
+            --hidden-import websockets ^
+            --hidden-import uvicorn ^
+            start.py
         shell: cmd
 
       - name: Upload artifact
