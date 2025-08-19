@@ -1,3 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>CSV Import</h2>
+<form method="post" action="/admin/teachers/upload" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv" required>
+    <button type="submit">Importieren</button>
+    <p style="color:#666;">Erwartet Spalten: Nachname, Vorname, Kürzel (weitere optional)</p>
+ </form>
+{% endblock %}
+
 {% extends "base.html" %} {% block content %}
 <h2>Admin</h2>
 <p>Lade hier eine CSV-Datei mit Lehrkräften hoch.</p>

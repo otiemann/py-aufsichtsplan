@@ -1,0 +1,31 @@
+{% set _rows = teacher_assignment_counts or [] %}
+<table>
+    <thead>
+        <tr>
+            <th>Kürzel</th>
+            <th>Nachname</th>
+            <th>Vorname</th>
+            <th>Aufsichten</th>
+            <th>Soll</th>
+            <th>Befreit</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in _rows %}
+        <tr>
+            <td>{{ r.abbreviation or '' }}</td>
+            <td>{{ r.last_name or r[0] }}</td>
+            <td>{{ r.first_name or r[1] }}</td>
+            <td>{{ r.count or r[3] or 0 }}</td>
+            <td>{{ r.target if r.target is not none else 0 }}</td>
+            <td>{{ 'Ja' if r.exempt else 'Nein' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6">Keine Daten.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+

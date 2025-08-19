@@ -1,3 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Plan / Export</h2>
+
+<form method="post" action="/plan/generate" style="margin-bottom:1rem;">
+    <button type="submit">Plan für aktuelle Woche erzeugen</button>
+    <span style="margin-left:1rem; color:#666;">{{ (start_date.strftime('%d.%m.') ~ ' - ' ~ end_date.strftime('%d.%m.%Y')) if start_date and end_date }}</span>
+    <span style="margin-left:1rem; color:#e67e22;">Hinweis: Nur Mo–Fr, 4 Pausen.</span>
+</form>
+
+<h3>Aktueller Wochenplan</h3>
+{% include "plan/week_grid.html" %}
+
+<h3>Export</h3>
+<p>
+    <a href="/plan/export/pdf">PDF (Wochenraster)</a>
+    |
+    <a href="/plan/export/pdf-by-floor">PDF (nach Stockwerken)</a>
+    |
+    <a href="/plan/export/gpu009">GPU009.txt</a>
+    <span style="margin-left:1rem; color:#666;">(PDF ohne Summen, nur Wochentage)</span>
+    </p>
+
+<h3>Aufsichten pro Lehrkraft</h3>
+{% include "plan/week_summary.html" %}
+{% endblock %}
+
 {% extends "base.html" %} {% block content %}
 <h2>Plan (aktuelle Woche)</h2>
 

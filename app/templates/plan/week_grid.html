@@ -1,3 +1,45 @@
+{% set _break_labels = break_labels or ["0. Stunde","2./3. Stunde","4./5. Stunde","6./7. Stunde"] %}
+{% set _floors = floors or [] %}
+{% set _week_plan = week_plan or {} %}
+
+<table>
+    <thead>
+        <tr>
+            <th>Tag</th>
+            {% for label in _break_labels %}
+            <th>{{ label }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for day, breaks in _week_plan.items() %}
+        <tr>
+            <td>{{ day.strftime('%A') }}</td>
+            {% for break_index in range(1, (_break_labels|length) + 1) %}
+            <td>
+                {% for floor in _floors %}
+                <div style="border:1px solid #ccc; padding:5px; margin-bottom:5px;">
+                    <strong>{{ floor.name }}:</strong>
+                    {% if breaks.get(break_index, {}).get(floor.id) %}
+                        {% for teacher in breaks[break_index][floor.id] %}
+                            {{ teacher.abbreviation or teacher.last_name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="{{ 1 + (_break_labels|length) }}">Noch kein Plan vorhanden.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+ </table>
+
 <table>
     <thead>
         <tr>

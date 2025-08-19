@@ -135,10 +135,21 @@ if __name__ == "__main__":
 	# Import jetzt, nachdem ENV & CWD gesetzt sind
 	from app.main import app as fastapi_app  # type: ignore
 
-	uvicorn.run(
-		fastapi_app,
-		host="127.0.0.1",
-		port=8000,
-		reload=False,
-		log_config=log_config,
-	)
+	try:
+		uvicorn.run(
+			fastapi_app,
+			host="127.0.0.1",
+			port=8000,
+			reload=False,
+			log_config=log_config,
+		)
+	except OSError:
+		alt_url = "http://127.0.0.1:8001"
+		open_browser_when_ready(alt_url)
+		uvicorn.run(
+			fastapi_app,
+			host="127.0.0.1",
+			port=8001,
+			reload=False,
+			log_config=log_config,
+		)
