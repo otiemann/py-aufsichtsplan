@@ -1,8 +1,10 @@
 import os
-from fastapi import FastAPI
+import signal
+import threading
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.requests import Request
+from fastapi.responses import JSONResponse
 
 from .database import Base, engine
 
@@ -55,6 +57,24 @@ def on_startup() -> None:
 @app.get("/")
 async def root(request: Request):
     return templates.TemplateResponse("home.html", {"request": request})
+
+
+@app.post("/shutdown")
+async def shutdown():
+    """Beendet die Anwendung ordentlich"""
+    def stop_server():
+        # Warte kurz, damit die Response noch gesendet werden kann
+        import time
+        time.sleep(1)
+        # Sende SIGTERM an den aktuellen Prozess
+        os.kill(os.getpid(), signal.SIGTERM)
+    
+    # Starte den Shutdown in einem separaten Thread
+    shutdown_thread = threading.Thread(target=stop_server)
+    shutdown_thread.daemon = True
+    shutdown_thread.start()
+    
+    return JSONResponse(content={"message": "Server wird beendet..."}, status_code=200)
 
 
 # Router erst NACH Initialisierung der Templates importieren,

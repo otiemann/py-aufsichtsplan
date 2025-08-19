@@ -78,6 +78,7 @@
                 <a href="/admin/teachers" style="text-decoration: none; padding: 0.5rem 1rem; background: #e74c3c; color: white; border-radius: 5px;">👥 Lehrkräfte</a>
                 <a href="/plan/floors" style="text-decoration: none; padding: 0.5rem 1rem; background: #f39c12; color: white; border-radius: 5px;">🏢 Stockwerke</a>
                 <a href="/plan/generate" style="text-decoration: none; padding: 0.5rem 1rem; background: #27ae60; color: white; border-radius: 5px;">📅 Plan</a>
+                <button onclick="shutdownApp()" style="padding: 0.5rem 1rem; background: #c0392b; color: white; border: none; border-radius: 5px; cursor: pointer;">⏻ Beenden</button>
             </nav>
         </div>
     </header>
@@ -89,6 +90,49 @@
     <main>
         {% block content %}{% endblock %}
     </main>
+
+    <script>
+        async function shutdownApp() {
+            const confirmed = confirm('Möchten Sie die Anwendung wirklich beenden?\n\nDie Anwendung wird komplett geschlossen und alle ungespeicherten Daten gehen verloren.');
+
+            if (confirmed) {
+                try {
+                    // Zeige Loading-Message
+                    const shutdownButton = document.querySelector('button[onclick="shutdownApp()"]');
+                    const originalText = shutdownButton.innerHTML;
+                    shutdownButton.innerHTML = '⏳ Beende...';
+                    shutdownButton.disabled = true;
+
+                    // Sende Shutdown-Request
+                    const response = await fetch('/shutdown', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        alert('✅ ' + result.message + '\n\nDas Browserfenster kann geschlossen werden.');
+
+                        // Versuche das Fenster zu schließen (funktioniert nur in bestimmten Browsern/Kontexten)
+                        setTimeout(() => {
+                            window.close();
+                        }, 2000);
+                    } else {
+                        throw new Error('Shutdown-Request fehlgeschlagen');
+                    }
+                } catch (error) {
+                    alert('❌ Fehler beim Beenden der Anwendung: ' + error.message);
+
+                    // Stelle Button wieder her
+                    const shutdownButton = document.querySelector('button[onclick="shutdownApp()"]');
+                    shutdownButton.innerHTML = originalText;
+                    shutdownButton.disabled = false;
+                }
+            }
+        }
+    </script>
 </body>
 
 </html>
