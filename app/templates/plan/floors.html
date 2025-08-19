@@ -1,58 +1,10 @@
-{% extends "base.html" %}
-
-{% block content %}
+{% extends "base.html" %} {% block content %}
 <h2>Stockwerke</h2>
 
 <form method="post" action="/plan/floors" style="margin-bottom:1rem;">
     <input type="text" name="name" placeholder="Stockwerk Name" required>
     <input type="number" name="required_per_break" min="1" value="1" placeholder="Bedarf pro Pause">
     <input type="number" name="order_index" min="0" value="0" placeholder="Reihenfolge">
-    <button type="submit">Hinzufügen</button>
- </form>
-
- <table>
-     <thead>
-         <tr>
-             <th>Name</th>
-             <th>Bedarf pro Pause</th>
-             <th>Reihenfolge</th>
-             <th>Aktionen</th>
-         </tr>
-     </thead>
-     <tbody>
-         {% for f in floors %}
-         <tr>
-             <td>{{ f.name }}</td>
-             <td>{{ f.required_per_break }}</td>
-             <td>
-                 <form method="post" action="/plan/floors/update-order" style="display:inline;">
-                     <input type="hidden" name="floor_id" value="{{ f.id }}">
-                     <input type="number" name="order_index" value="{{ f.order_index }}" style="width:5rem;">
-                     <button type="submit">Speichern</button>
-                 </form>
-             </td>
-             <td>
-                 <form method="post" action="/plan/floors/delete" style="display:inline;" onsubmit="return confirm('Stockwerk {{ f.name }} wirklich löschen?');">
-                     <input type="hidden" name="floor_id" value="{{ f.id }}">
-                     <button type="submit">Löschen</button>
-                 </form>
-             </td>
-         </tr>
-         {% else %}
-         <tr>
-             <td colspan="4">Noch keine Stockwerke vorhanden.</td>
-         </tr>
-         {% endfor %}
-     </tbody>
- </table>
-{% endblock %}
-
-{% extends "base.html" %} {% block content %}
-<h2>Stockwerke</h2>
-<form method="post" action="/plan/floors">
-    <label>Name: <input type="text" name="name" required></label>
-    <label>Aufsichten pro Pause: <input type="number" name="required_per_break" min="1" value="1" style="width:5rem"></label>
-    <label>Reihenfolge: <input type="number" name="order_index" value="0" style="width:6rem"></label>
     <button type="submit">Hinzufügen</button>
 </form>
 
@@ -61,24 +13,24 @@
         <tr>
             <th>Reihenfolge</th>
             <th>Name</th>
-            <th>Aufsichten/Pause</th>
-            <th>Aktion</th>
+            <th>Bedarf pro Pause</th>
+            <th>Aktionen</th>
         </tr>
     </thead>
     <tbody>
         {% for f in floors %}
         <tr>
             <td>
-                <form method="post" action="/plan/floors/order" style="display:inline">
+                <form method="post" action="/plan/floors/order" style="display:inline;">
                     <input type="hidden" name="floor_id" value="{{ f.id }}">
-                    <input type="number" name="order_index" value="{{ f.order_index }}" style="width:6rem">
+                    <input type="number" name="order_index" value="{{ f.order_index }}" style="width:5rem;">
                     <button type="submit">Speichern</button>
                 </form>
             </td>
             <td>{{ f.name }}</td>
             <td>{{ f.required_per_break }}</td>
             <td>
-                <form method="post" action="/plan/floors/delete" style="display:inline">
+                <form method="post" action="/plan/floors/delete" style="display:inline;" onsubmit="return confirm('Stockwerk {{ f.name }} wirklich löschen?');">
                     <input type="hidden" name="floor_id" value="{{ f.id }}">
                     <button type="submit">Löschen</button>
                 </form>
@@ -86,7 +38,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="4">Keine Stockwerke angelegt.</td>
+            <td colspan="4">Noch keine Stockwerke vorhanden.</td>
         </tr>
         {% endfor %}
     </tbody>

@@ -1,24 +1,21 @@
-{% extends "base.html" %}
-
-{% block content %}
-<h2>CSV Import</h2>
-<form method="post" action="/admin/teachers/upload" enctype="multipart/form-data">
-    <input type="file" name="file" accept=".csv" required>
-    <button type="submit">Importieren</button>
-    <p style="color:#666;">Erwartet Spalten: Nachname, Vorname, Kürzel (weitere optional)</p>
- </form>
-{% endblock %}
-
 {% extends "base.html" %} {% block content %}
-<h2>Admin</h2>
-<p>Lade hier eine CSV-Datei mit Lehrkräften hoch.</p>
+<h2>Admin - CSV Import</h2>
+<p>Laden Sie hier eine CSV-Datei mit Lehrkräften hoch.</p>
 
-<form method="post" action="/admin/teachers/upload" enctype="multipart/form-data">
-    <label>Datei (CSV): <input type="file" name="file" accept=".csv" required></label>
-    <label>Trennzeichen: <input type="text" name="delimiter" value="," maxlength="1" style="width:3rem"></label>
-    <button type="submit">Hochladen</button>
+<form method="post" action="/admin/teachers/upload" enctype="multipart/form-data" style="margin-bottom: 2rem;">
+    <div style="margin-bottom: 1rem;">
+        <label>Datei (CSV): <input type="file" name="file" accept=".csv" required></label>
+    </div>
+    <div style="margin-bottom: 1rem;">
+        <label>Trennzeichen: <input type="text" name="delimiter" value="," maxlength="1" style="width:3rem"></label>
+    </div>
+    <button type="submit">CSV-Datei hochladen</button>
 </form>
 
-<p>Erwartete Spalten (mind. Vor- und Nachname): <code>first_name</code>, <code>last_name</code>, optional: <code>email</code>, <code>abbreviation</code>, <code>department</code>. Deutsche Alternativen werden erkannt: <code>vorname</code>, <code>nachname</code>,
-    <code>kuerzel</code>, <code>fachbereich</code>.</p>
+<div style="background: #f8f9fa; padding: 1rem; border-radius: 5px; border-left: 4px solid #007bff;">
+    <h4>Erwartete Spalten:</h4>
+    <p>Mindestens erforderlich: <strong>Nachname</strong> und <strong>Vorname</strong></p>
+    <p>Optional: <strong>Kürzel</strong>, <strong>E-Mail</strong>, <strong>Fachbereich</strong></p>
+    <p><small>Deutsche und englische Spaltennamen werden automatisch erkannt.</small></p>
+</div>
 {% endblock %}

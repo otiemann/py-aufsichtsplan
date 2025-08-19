@@ -1,41 +1,19 @@
-{% extends "base.html" %}
+{% extends "base.html" %} {% block content %}
+<h2>Plan generieren und anzeigen</h2>
 
-{% block content %}
-<h2>Plan / Export</h2>
-
-<form method="post" action="/plan/generate" style="margin-bottom:1rem;">
-    <button type="submit">Plan für aktuelle Woche erzeugen</button>
-    <span style="margin-left:1rem; color:#666;">{{ (start_date.strftime('%d.%m.') ~ ' - ' ~ end_date.strftime('%d.%m.%Y')) if start_date and end_date }}</span>
-    <span style="margin-left:1rem; color:#e67e22;">Hinweis: Nur Mo–Fr, 4 Pausen.</span>
+<form method="post" action="/plan/generate" style="margin-bottom:2rem;">
+    <button type="submit" style="padding: 0.8rem 1.5rem; font-size: 1.1rem; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer;">
+        Plan für aktuelle Woche erzeugen
+    </button>
+    <div style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;">
+        Generiert automatisch Aufsichtspläne für Montag bis Freitag mit 4 Pausen pro Tag
+    </div>
 </form>
 
 <h3>Aktueller Wochenplan</h3>
 {% include "plan/week_grid.html" %}
 
-<h3>Export</h3>
-<p>
-    <a href="/plan/export/pdf">PDF (Wochenraster)</a>
-    |
-    <a href="/plan/export/pdf-by-floor">PDF (nach Stockwerken)</a>
-    |
-    <a href="/plan/export/gpu009">GPU009.txt</a>
-    <span style="margin-left:1rem; color:#666;">(PDF ohne Summen, nur Wochentage)</span>
-    </p>
-
-<h3>Aufsichten pro Lehrkraft</h3>
-{% include "plan/week_summary.html" %}
-{% endblock %}
-
-{% extends "base.html" %} {% block content %}
-<h2>Plan (aktuelle Woche)</h2>
-
-<form method="post" action="/plan/generate">
-    <button type="submit">Plan für Mo–Fr erzeugen</button>
-</form>
-
-{% include 'plan/week_grid.html' %}
-
-<h3>Aufsichten je Lehrkraft (aktuelle Woche)</h3>
+<h3>Aufsichten pro Lehrkraft (aktuelle Woche)</h3>
 <table>
     <thead>
         <tr>
@@ -55,16 +33,22 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="4">Keine Daten</td>
+            <td colspan="4">Keine Daten verfügbar</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 
-<h3>Export</h3>
-<p>
-    <a href="/plan/export/pdf">PDF herunterladen</a> |
-    <a href="/plan/export/pdf-by-floor">PDF (nach Stockwerken) herunterladen</a> |
-    <a href="/plan/export/gpu009">GPU009.txt herunterladen</a>
-</p>
+<h3>Export-Optionen</h3>
+<div style="display: flex; gap: 1rem; margin-top: 1rem;">
+    <a href="/plan/export/pdf" style="text-decoration: none; padding: 0.5rem 1rem; background: #3498db; color: white; border-radius: 5px;">
+        📄 PDF (Wochenraster)
+    </a>
+    <a href="/plan/export/pdf-by-floor" style="text-decoration: none; padding: 0.5rem 1rem; background: #e74c3c; color: white; border-radius: 5px;">
+        🏢 PDF (nach Stockwerken)
+    </a>
+    <a href="/plan/export/gpu009" style="text-decoration: none; padding: 0.5rem 1rem; background: #95a5a6; color: white; border-radius: 5px;">
+        📝 GPU009.txt
+    </a>
+</div>
 {% endblock %}
