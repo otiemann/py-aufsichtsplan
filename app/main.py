@@ -6,10 +6,6 @@ from fastapi.requests import Request
 
 from .database import Base, engine
 
-# Router
-from .routers import admin as admin_router
-from .routers import plan as plan_router
-
 app = FastAPI(title="Vertretungsplan / Pausenaufsicht")
 
 RES_DIR_ENV = os.environ.get("APP_RESOURCES_DIR") or os.getcwd()
@@ -61,6 +57,10 @@ async def root(request: Request):
     return templates.TemplateResponse("home.html", {"request": request})
 
 
-# Include routers
+# Router erst NACH Initialisierung der Templates importieren,
+# damit Router die zentrale Template-Engine aus main verwenden können
+from .routers import admin as admin_router  # noqa: E402
+from .routers import plan as plan_router    # noqa: E402
+
 app.include_router(admin_router.router, prefix="/admin", tags=["admin"])
 app.include_router(plan_router.router, prefix="/plan", tags=["plan"])
