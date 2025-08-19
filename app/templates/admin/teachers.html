@@ -1,0 +1,68 @@
+{% extends "base.html" %} {% block content %}
+<h2>Lehrkräfte</h2>
+
+<p><a href="/admin">CSV hochladen</a></p>
+
+<form method="post" action="/admin/teachers/bulk">
+    <div style="margin: .5rem 0;">
+        <button type="submit" name="action" value="set_exempt">Als „keine Aufsicht“ markieren</button>
+        <button type="submit" name="action" value="unset_exempt">„Keine Aufsicht“ entfernen</button>
+    </div>
+
+    <div style="margin: .5rem 0;">
+        <input type="number" name="target_duties" min="0" placeholder="Soll-Aufsicht" style="width:8rem">
+        <button type="submit" formaction="/admin/teachers/bulk-quota" formmethod="post">Soll (Masse) setzen</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width:2rem;"><input type="checkbox" onclick="document.querySelectorAll('input[name=ids]') .forEach(cb=>cb.checked=this.checked)"></th>
+                <th>Kürzel</th>
+                <th>Nachname</th>
+                <th>Vorname</th>
+                <th>Keine Aufsicht</th>
+                <th>Soll</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in teachers %}
+            <tr>
+                <td><input type="checkbox" name="ids" value="{{ t.id }}"></td>
+                <td>{{ t.abbreviation or '' }}</td>
+                <td>{{ t.last_name }}</td>
+                <td>{{ t.first_name }}</td>
+                <td>{{ 'Ja' if t.exempt else 'Nein' }}</td>
+                <td>{{ t.quota.target_duties if t.quota else 0 }}</td>
+                <td>
+                    <form method="post" action="/admin/teachers/set-exempt" style="display:inline">
+                        <input type="hidden" name="teacher_id" value="{{ t.id }}">
+                        <input type="hidden" name="value" value="{{ 0 if t.exempt else 1 }}">
+                        <button type="submit">{{ 'Befreiung entfernen' if t.exempt else 'Als befreit markieren' }}</button>
+                    </form>
+                    <form method="post" action="/admin/teachers/set-preferred-floor" style="display:inline">
+                        <input type="hidden" name="teacher_id" value="{{ t.id }}">
+                        <select name="preferred_floor_id">
+                            <option value="">(kein bevorzugtes Stockwerk)</option>
+                            {% for f in floors %}
+                                <option value="{{ f.id }}" {% if t.preferred_floor_id == f.id %}selected{% endif %}>{{ f.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit">Speichern</button>
+                    </form>
+                    <form method="post" action="/admin/teachers/delete" style="display:inline" onsubmit="return confirm('Lehrkraft wirklich löschen?');">
+                        <input type="hidden" name="teacher_id" value="{{ t.id }}">
+                        <button type="submit">Löschen</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7">Noch keine Lehrkräfte vorhanden.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</form>
+{% endblock %}

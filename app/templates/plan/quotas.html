@@ -1,0 +1,33 @@
+{% extends "base.html" %} {% block content %}
+<h2>Soll-Aufsichten</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Lehrkraft</th>
+            <th>Kürzel</th>
+            <th>Soll</th>
+            <th>Aktion</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for t in teachers %}
+        <tr>
+            <td>{{ t.last_name }}, {{ t.first_name }}</td>
+            <td>{{ t.abbreviation or '' }}</td>
+            <td>
+                <form method="post" action="/plan/quotas">
+                    <input type="hidden" name="teacher_id" value="{{ t.id }}">
+                    <input type="number" name="target_duties" min="0" value="{{ t.quota.target_duties if t.quota else 0 }}" style="width:5rem">
+                    <button type="submit">Speichern</button>
+                </form>
+            </td>
+            <td></td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4">Keine Lehrkräfte vorhanden.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

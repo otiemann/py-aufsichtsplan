@@ -1,0 +1,13 @@
+{% extends "base.html" %} {% block content %}
+<h2>Admin</h2>
+<p>Lade hier eine CSV-Datei mit Lehrkräften hoch.</p>
+
+<form method="post" action="/admin/teachers/upload" enctype="multipart/form-data">
+    <label>Datei (CSV): <input type="file" name="file" accept=".csv" required></label>
+    <label>Trennzeichen: <input type="text" name="delimiter" value="," maxlength="1" style="width:3rem"></label>
+    <button type="submit">Hochladen</button>
+</form>
+
+<p>Erwartete Spalten (mind. Vor- und Nachname): <code>first_name</code>, <code>last_name</code>, optional: <code>email</code>, <code>abbreviation</code>, <code>department</code>. Deutsche Alternativen werden erkannt: <code>vorname</code>, <code>nachname</code>,
+    <code>kuerzel</code>, <code>fachbereich</code>.</p>
+{% endblock %}

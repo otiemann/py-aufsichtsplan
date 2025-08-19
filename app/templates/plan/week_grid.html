@@ -1,0 +1,24 @@
+<table>
+    <thead>
+        <tr>
+            <th>Tag</th>
+            {% for label in break_labels %}
+            <th>{{ label }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for d_idx in range(0, 5) %}
+        <tr>
+            <td>{{ day_labels[d_idx] }}</td>
+            {% for b in range(0, breaks_per_day) %}
+            <td>
+                {% for line in grid[d_idx][b] %}
+                <div>{{ line }}</div>
+                {% endfor %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

@@ -1,0 +1,42 @@
+{% extends "base.html" %} {% block content %}
+<h2>Plan (aktuelle Woche)</h2>
+
+<form method="post" action="/plan/generate">
+    <button type="submit">Plan für Mo–Fr erzeugen</button>
+</form>
+
+{% include 'plan/week_grid.html' %}
+
+<h3>Aufsichten je Lehrkraft (aktuelle Woche)</h3>
+<table>
+    <thead>
+        <tr>
+            <th>Kürzel</th>
+            <th>Nachname</th>
+            <th>Vorname</th>
+            <th>Anzahl Aufsichten</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in counts %}
+        <tr>
+            <td>{{ c.abbreviation }}</td>
+            <td>{{ c.last_name }}</td>
+            <td>{{ c.first_name }}</td>
+            <td>{{ c.count }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4">Keine Daten</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h3>Export</h3>
+<p>
+    <a href="/plan/export/pdf">PDF herunterladen</a> |
+    <a href="/plan/export/pdf-by-floor">PDF (nach Stockwerken) herunterladen</a> |
+    <a href="/plan/export/gpu009">GPU009.txt herunterladen</a>
+</p>
+{% endblock %}

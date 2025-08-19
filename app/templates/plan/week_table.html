@@ -1,0 +1,24 @@
+<table>
+    <thead>
+        <tr>
+            <th>Datum</th>
+            <th>Pause</th>
+            <th>Stockwerk</th>
+            <th>Lehrkräfte</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in rows %}
+        <tr>
+            <td>{{ r.date.strftime('%d.%m.%Y') }}</td>
+            <td>{{ r.break_index }}</td>
+            <td>{{ r.floor }}</td>
+            <td>{{ ", ".join(r.teachers) if r.teachers else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4">Noch keine Zuweisungen vorhanden.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
