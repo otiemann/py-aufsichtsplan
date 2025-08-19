@@ -8,11 +8,9 @@ import uvicorn
 
 
 def get_base_dir() -> str:
-	# Unter PyInstaller onefile liegt add-data unter sys._MEIPASS
 	base = getattr(sys, "_MEIPASS", None)
 	if base:
 		return base
-	# Fallback: Projektverzeichnis (neben start.py)
 	return os.path.dirname(os.path.abspath(__file__))
 
 
@@ -28,8 +26,11 @@ def open_browser_later(url: str, delay_seconds: float = 1.5) -> None:
 
 if __name__ == "__main__":
 	base_dir = get_base_dir()
-	# Stelle sicher, dass relative Pfade (Templates, SQLite-DB) gefunden werden
-	os.chdir(base_dir)
+	# Templates/Static sollen im EXE-Paket gesucht werden
+	os.environ["APP_RESOURCES_DIR"] = base_dir
+	# DB im Arbeitsordner (neben EXE) – sicherstellen, dass wir dort arbeiten
+	exe_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
+	os.chdir(exe_dir)
 
 	open_browser_later("http://127.0.0.1:8000/plan/generate")
 	uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=False)

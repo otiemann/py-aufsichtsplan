@@ -25,9 +25,8 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --noconsole --onefile --name vertretungsplan ^
-            --add-data "app;app" ^
-            start.py
+          pyinstaller --noconsole --onefile --name vertretungsplan --add-data "app;app" start.py
+        shell: cmd
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

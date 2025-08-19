@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -11,10 +12,14 @@ from .routers import plan as plan_router
 
 app = FastAPI(title="Vertretungsplan / Pausenaufsicht")
 
-templates = Jinja2Templates(directory="app/templates")
+RES_DIR = os.environ.get("APP_RESOURCES_DIR") or os.getcwd()
+TEMPLATES_DIR = os.path.join(RES_DIR, "app", "templates")
+STATIC_DIR = os.path.join(RES_DIR, "app", "static")
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # Static (optional)
-# app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.on_event("startup")
