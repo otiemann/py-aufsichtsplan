@@ -22,6 +22,17 @@ def get_base_dir() -> str:
 	return os.path.dirname(os.path.abspath(__file__))
 
 
+def get_data_dir() -> str:
+	if os.name == "nt":
+		base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+		path = os.path.join(base, "py-vertretungsplan")
+	else:
+		base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+		path = os.path.join(base, "py-vertretungsplan")
+	os.makedirs(path, exist_ok=True)
+	return path
+
+
 def open_browser_later(url: str, delay_seconds: float = 1.5) -> None:
 	def _op():
 		time.sleep(delay_seconds)
@@ -75,10 +86,15 @@ def build_logging_config(log_file: str) -> dict:
 if __name__ == "__main__":
 	base_dir = get_base_dir()
 	os.environ["APP_RESOURCES_DIR"] = base_dir
+
+	data_dir = get_data_dir()
+	os.environ["APP_DATA_DIR"] = data_dir
+
+	# DB- und Log-Verzeichnis ist data_dir; Arbeitsverzeichnis bleibt EXE-Ordner
 	exe_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 	os.chdir(exe_dir)
 
-	log_file = os.path.join(exe_dir, "app.log")
+	log_file = os.path.join(data_dir, "app.log")
 	log_config = build_logging_config(log_file)
 
 	open_browser_later("http://127.0.0.1:8000/plan/generate")
@@ -92,7 +108,6 @@ if __name__ == "__main__":
 			log_config=log_config,
 		)
 	else:
-		# Fallback: Import zur Laufzeit (sollte dank Direktimport oben selten nötig sein)
 		uvicorn.run(
 			"app.main:app",
 			host="127.0.0.1",
