@@ -25,9 +25,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build executable
+      - name: Build executable (onefile)
         run: |
-          pyinstaller --noconsole --onefile --name vertretungsplan --add-data "app;app" ^
+          pyinstaller --noconsole --onefile --name vertretungsplan ^
+            --add-data "app/templates;app/templates" ^
+            --add-data "app/static;app/static" ^
             --hidden-import fastapi ^
             --hidden-import starlette ^
             --hidden-import pydantic ^
@@ -42,8 +44,22 @@ jobs:
             start.py
         shell: cmd
 
-      - name: Upload artifact
+      - name: Upload onefile artifact
         uses: actions/upload-artifact@v4
         with:
           name: vertretungsplan-windows
           path: dist/vertretungsplan.exe
+
+      - name: Build folder (onedir)
+        run: |
+          pyinstaller --noconsole --onedir --name vertretungsplan ^
+            --add-data "app/templates;app/templates" ^
+            --add-data "app/static;app/static" ^
+            start.py
+        shell: cmd
+
+      - name: Upload onedir artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vertretungsplan-windows-onedir
+          path: dist/vertretungsplan/**
