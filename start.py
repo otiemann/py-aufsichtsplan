@@ -57,6 +57,17 @@ def try_open_url(url: str) -> None:
 			pass
 
 
+def notify_user(url: str) -> None:
+	if os.name == "nt":
+		try:
+			import ctypes  # type: ignore
+			MB_ICONINFORMATION = 0x40
+			MB_TOPMOST = 0x00040000
+			ctypes.windll.user32.MessageBoxW(None, f"Die Anwendung laeuft. Oeffne im Browser: {url}", "Vertretungsplan", MB_ICONINFORMATION | MB_TOPMOST)
+		except Exception:
+			pass
+
+
 def open_browser_when_ready(url: str, timeout_seconds: float = 15.0) -> None:
 	def _op():
 		deadline = time.time() + timeout_seconds
@@ -69,6 +80,7 @@ def open_browser_when_ready(url: str, timeout_seconds: float = 15.0) -> None:
 			except Exception:
 				time.sleep(0.5)
 		try_open_url(url)
+		notify_user(url)
 	threading.Thread(target=_op, daemon=True).start()
 
 
