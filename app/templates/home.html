@@ -1,6 +1,4 @@
-{% extends "base.html" %}
-
-{% block content %}
+{% extends "base.html" %} {% block content %}
 <style>
     .home-container {
         max-width: 800px;
@@ -38,13 +36,13 @@
         text-decoration: none;
         border-radius: 10px;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     
     .home-button:hover {
         background: #2980b9;
         transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
     }
     
     .home-button-icon {
@@ -114,27 +112,33 @@
 <div class="home-container">
     <h1 class="home-title">Pausenaufsicht Verwaltung</h1>
     <p class="home-subtitle">Einfache Planung und Verwaltung der Pausenaufsichten</p>
-    
+
     <div class="home-buttons">
         <a href="/plan/generate" class="home-button primary">
             <div class="home-button-icon">📅</div>
             <div class="home-button-title">Plan erstellen</div>
             <div class="home-button-desc">Wochenplan generieren und anzeigen</div>
         </a>
-        
+
         <a href="/admin/teachers" class="home-button">
             <div class="home-button-icon">👥</div>
             <div class="home-button-title">Lehrkräfte</div>
             <div class="home-button-desc">Lehrkräfte verwalten und importieren</div>
         </a>
-        
+
         <a href="/plan/floors" class="home-button secondary">
             <div class="home-button-icon">🏢</div>
             <div class="home-button-title">Stockwerke</div>
             <div class="home-button-desc">Stockwerke und Bedarf konfigurieren</div>
         </a>
+
+        <a href="/admin/database" class="home-button" style="background: #8e44ad;">
+            <div class="home-button-icon">💾</div>
+            <div class="home-button-title">Datenbank</div>
+            <div class="home-button-desc">Backup und Wiederherstellung</div>
+        </a>
     </div>
-    
+
     <div class="home-info">
         <h3>Schnellstart:</h3>
         <ul>
