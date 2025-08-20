@@ -229,3 +229,6 @@ async def bulk_quota(target_duties: int = Form(...), ids: List[int] = Form([]), 
     response = RedirectResponse(url="/admin/teachers", status_code=303)
     response.set_cookie("flash", f"Soll-Aufsichten bei {affected} gesetzt")
     return response
+
+
+

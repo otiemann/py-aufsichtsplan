@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict
 
-from fastapi import APIRouter, Depends, Form
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.requests import Request
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
+from pydantic import BaseModel
 
 from ..database import get_db
 from ..models import Floor, DutySlot, Assignment, Teacher
@@ -25,6 +26,18 @@ try:
 except Exception:
     # Fallback (Dev)
     templates = Jinja2Templates(directory="app/templates")
+
+
+# Pydantic Models für API
+class TeacherAssignmentData(BaseModel):
+    day: int
+    break_index: int
+    floor: str
+    teachers: List[str]
+
+
+class SaveChangesRequest(BaseModel):
+    assignments: List[TeacherAssignmentData]
 
 
 def monday_of_week(d: date) -> date:
@@ -209,3 +222,116 @@ async def export_gpu009(db: Session = Depends(get_db)):
     return StreamingResponse(iter([text.encode("utf-8")]), media_type="text/plain; charset=utf-8", headers={
         "Content-Disposition": f"attachment; filename=GPU009_{start_date.isoformat()}_{end_date.isoformat()}.txt"
     })
+
+
+@router.post("/save-changes")
+async def save_changes(request: SaveChangesRequest, db: Session = Depends(get_db)):
+    """Speichert manuelle Änderungen am Aufsichtsplan (Drag-and-Drop)"""
+    try:
+        start_date, end_date = current_week_range()
+        
+        # Erstelle Lookups für Floors und Teachers
+        floors_by_name = {f.name: f for f in db.query(Floor).all()}
+        teachers_by_name = {}
+        
+        # Erstelle Teacher-Lookup (Kürzel und vollständige Namen)
+        for teacher in db.query(Teacher).all():
+            if teacher.abbreviation:
+                teachers_by_name[teacher.abbreviation] = teacher
+            teachers_by_name[f"{teacher.last_name}, {teacher.first_name}"] = teacher
+            # Auch für den Fall, dass nur der Name verwendet wird
+            teachers_by_name[teacher.last_name] = teacher
+        
+        # Lösche alle existierenden Assignments und DutySlots für den aktuellen Zeitraum
+        # Zuerst Assignments löschen (wegen Foreign Key Constraint)
+        existing_slots = db.query(DutySlot).filter(
+            DutySlot.date >= start_date,
+            DutySlot.date <= end_date
+        ).all()
+        
+        for slot in existing_slots:
+            db.query(Assignment).filter(Assignment.duty_slot_id == slot.id).delete()
+        
+        # Dann DutySlots löschen
+        db.query(DutySlot).filter(
+            DutySlot.date >= start_date,
+            DutySlot.date <= end_date
+        ).delete()
+        
+        # Explizit committen, um sicherzustellen, dass die Löschung abgeschlossen ist
+        db.commit()
+        
+        # Erstelle neue Assignments basierend auf den Drag-and-Drop-Änderungen
+        created_assignments = 0
+        
+        for assignment_data in request.assignments:
+            day_offset = assignment_data.day
+            break_index = assignment_data.break_index
+            floor_name = assignment_data.floor
+            teacher_names = assignment_data.teachers
+            
+            # Überspringe leere Assignments
+            if not teacher_names:
+                continue
+            
+            # Finde oder erstelle Floor
+            floor = floors_by_name.get(floor_name)
+            if not floor:
+                # Falls ein neues Stockwerk durch Drag-and-Drop entstanden ist
+                floor = Floor(name=floor_name, required_per_break=1, order_index=len(floors_by_name))
+                db.add(floor)
+                db.flush()
+                floors_by_name[floor_name] = floor
+            
+            # Berechne das Datum
+            slot_date = start_date + timedelta(days=day_offset)
+            
+            # Prüfe, ob ein DutySlot mit diesen Parametern bereits existiert (Sicherheitscheck)
+            existing_duty_slot = db.query(DutySlot).filter(
+                DutySlot.date == slot_date,
+                DutySlot.break_index == break_index,
+                DutySlot.floor_id == floor.id
+            ).first()
+            
+            if existing_duty_slot:
+                duty_slot = existing_duty_slot
+            else:
+                # Erstelle DutySlot
+                duty_slot = DutySlot(
+                    date=slot_date,
+                    break_index=break_index,
+                    floor_id=floor.id
+                )
+                db.add(duty_slot)
+                db.flush()
+            
+            # Erstelle Assignments für alle Lehrkräfte
+            for teacher_name in teacher_names:
+                teacher_name = teacher_name.strip()
+                if not teacher_name:
+                    continue
+                
+                teacher = teachers_by_name.get(teacher_name)
+                if teacher:
+                    assignment = Assignment(
+                        duty_slot_id=duty_slot.id,
+                        teacher_id=teacher.id
+                    )
+                    db.add(assignment)
+                    created_assignments += 1
+                else:
+                    print(f"[WARN] Lehrkraft '{teacher_name}' nicht gefunden beim Speichern")
+        
+        # Committe alle Änderungen
+        db.commit()
+        
+        return JSONResponse(content={
+            "message": "Änderungen erfolgreich gespeichert",
+            "created_assignments": created_assignments,
+            "total_slots": len(request.assignments)
+        })
+        
+    except Exception as e:
+        db.rollback()
+        print(f"[ERROR] Fehler beim Speichern der manuellen Änderungen: {e}")
+        raise HTTPException(status_code=500, detail=f"Fehler beim Speichern: {str(e)}")

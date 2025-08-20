@@ -1,34 +1,341 @@
-<table style="width: 100%; border-collapse: collapse;">
-    <thead>
-        <tr style="background: #f5f5f5;">
-            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Tag</th>
-            {% for label in break_labels %}
-            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">{{ label }}</th>
-            {% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-        {% if grid and day_labels and breaks_per_day %} {% for d_idx in range(0, 5) %}
-        <tr>
-            <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold; background: #f9f9f9;">
-                {{ day_labels[d_idx] }}
-            </td>
-            {% for b in range(0, breaks_per_day) %}
-            <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;">
-                {% for line in grid[d_idx][b] %}
-                <div style="margin: 2px 0; padding: 2px; border-left: 3px solid #3498db; padding-left: 8px;">
-                    {{ line }}
-                </div>
+<div id="planContainer">
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: #f5f5f5;">
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Tag</th>
+                {% for label in break_labels %}
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">{{ label }}</th>
                 {% endfor %}
-            </td>
-            {% endfor %}
-        </tr>
-        {% endfor %} {% else %}
-        <tr>
-            <td colspan="{{ 1 + (break_labels|length if break_labels else 4) }}" style="border: 1px solid #ddd; padding: 8px; text-align: center; color: #666;">
-                Noch kein Plan vorhanden. Klicken Sie auf "Plan für aktuelle Woche erzeugen".
-            </td>
-        </tr>
-        {% endif %}
-    </tbody>
-</table>
+            </tr>
+        </thead>
+        <tbody>
+            {% if grid and day_labels and breaks_per_day %} {% for d_idx in range(0, 5) %}
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold; background: #f9f9f9;">
+                    {{ day_labels[d_idx] }}
+                </td>
+                {% for b in range(0, breaks_per_day) %}
+                <td class="drop-zone" data-day="{{ d_idx }}" data-break="{{ b }}" style="border: 1px solid #ddd; padding: 8px; vertical-align: top; min-height: 60px; position: relative;" ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="clearDropHighlight(event)">
+                    {% for line in grid[d_idx][b] %} {% set outer_loop = loop %} {% for floor_line in [line] %} {% if ':' in floor_line %} {% set floor_name, teachers_str = floor_line.split(':', 1) %}
+                    <div class="floor-container" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
+                        <strong>{{ floor_name.strip() }}:</strong>
+                        <div class="teachers-container" style="margin-top: 2px;">
+                            {% if teachers_str.strip() != '—' and teachers_str.strip() != '' %} {% for teacher in teachers_str.split(',') %} {% if teacher.strip() %}
+                            <span class="teacher-chip" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher.strip() }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" style="display: inline-block; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;">
+                                            {{ teacher.strip() }}
+                                        </span> {% endif %} {% endfor %} {% else %}
+                            <span style="color: #999; font-style: italic;">—</span> {% endif %}
+                        </div>
+                    </div>
+                    {% endif %} {% endfor %} {% endfor %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %} {% else %}
+            <tr>
+                <td colspan="{{ 1 + (break_labels|length if break_labels else 4) }}" style="border: 1px solid #ddd; padding: 8px; text-align: center; color: #666;">
+                    Noch kein Plan vorhanden. Klicken Sie auf "Plan erzeugen".
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+{% if grid and day_labels and breaks_per_day %}
+<div id="editControls" style="margin-top: 1rem; padding: 1rem; background: #e8f5e8; border-radius: 5px; border-left: 4px solid #27ae60;">
+    <h4 style="margin: 0 0 0.5rem 0; color: #27ae60;">✏️ Plan bearbeiten</h4>
+    <p style="margin: 0 0 1rem 0; color: #555; font-size: 0.9rem;">
+        Sie können Lehrkräfte per Drag-and-Drop zwischen den Zeitslots verschieben. Ziehen Sie einfach eine Lehrkraft von einem Feld in ein anderes.
+    </p>
+    <button id="saveChanges" onclick="saveChanges()" style="padding: 0.6rem 1.2rem; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;" disabled>
+        💾 Änderungen speichern
+    </button>
+    <button onclick="resetPlan()" style="padding: 0.6rem 1.2rem; background: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        🔄 Plan zurücksetzen
+    </button>
+    <div id="changeStatus" style="margin-top: 0.5rem; font-size: 0.9rem; color: #666;"></div>
+</div>
+
+<script>
+    let hasChanges = false;
+    let draggedTeacher = null;
+
+    function dragStart(event) {
+        draggedTeacher = {
+            teacher: event.target.dataset.teacher,
+            floor: event.target.dataset.floor,
+            sourceDay: event.target.dataset.day,
+            sourceBreak: event.target.dataset.break
+        };
+
+        event.target.style.opacity = '0.5';
+        event.target.style.transform = 'scale(0.95)';
+
+        // Highlight alle möglichen Drop-Zonen für das gleiche Stockwerk
+        document.querySelectorAll('.drop-zone').forEach(zone => {
+            const floorContainers = zone.querySelectorAll('.floor-container');
+            floorContainers.forEach(container => {
+                const floorName = container.querySelector('strong').textContent.replace(':', '');
+                if (floorName === draggedTeacher.floor) {
+                    zone.style.background = '#f0f8ff';
+                    zone.style.border = '2px dashed #2196f3';
+                }
+            });
+        });
+    }
+
+    function dragEnd(event) {
+        event.target.style.opacity = '1';
+        event.target.style.transform = 'scale(1)';
+
+        // Reset alle Highlights
+        document.querySelectorAll('.drop-zone').forEach(zone => {
+            zone.style.background = '';
+            zone.style.border = '1px solid #ddd';
+        });
+    }
+
+    function allowDrop(event) {
+        event.preventDefault();
+        if (draggedTeacher) {
+            // Prüfe, ob diese Zone das richtige Stockwerk hat
+            const zone = event.currentTarget;
+            const floorContainers = zone.querySelectorAll('.floor-container');
+            let hasMatchingFloor = false;
+
+            floorContainers.forEach(container => {
+                const floorName = container.querySelector('strong').textContent.replace(':', '');
+                if (floorName === draggedTeacher.floor) {
+                    hasMatchingFloor = true;
+                }
+            });
+
+            if (hasMatchingFloor) {
+                zone.style.background = '#e8f5e8';
+                zone.style.transform = 'scale(1.02)';
+            }
+        }
+    }
+
+    function clearDropHighlight(event) {
+        const zone = event.currentTarget;
+        if (draggedTeacher) {
+            const floorContainers = zone.querySelectorAll('.floor-container');
+            floorContainers.forEach(container => {
+                const floorName = container.querySelector('strong').textContent.replace(':', '');
+                if (floorName === draggedTeacher.floor) {
+                    zone.style.background = '#f0f8ff';
+                }
+            });
+        }
+        zone.style.transform = '';
+    }
+
+    function drop(event) {
+        event.preventDefault();
+
+        if (!draggedTeacher) return;
+
+        const targetZone = event.currentTarget;
+        const targetDay = targetZone.dataset.day;
+        const targetBreak = targetZone.dataset.break;
+
+        // Finde das richtige Stockwerk-Container in der Zielzone
+        const floorContainers = targetZone.querySelectorAll('.floor-container');
+        let targetFloorContainer = null;
+
+        floorContainers.forEach(container => {
+            const floorName = container.querySelector('strong').textContent.replace(':', '');
+            if (floorName === draggedTeacher.floor) {
+                targetFloorContainer = container;
+            }
+        });
+
+        if (!targetFloorContainer) {
+            alert('Lehrkraft kann nur innerhalb desselben Stockwerks verschoben werden!');
+            return;
+        }
+
+        // Prüfe, ob es eine andere Position ist
+        if (draggedTeacher.sourceDay === targetDay && draggedTeacher.sourceBreak === targetBreak) {
+            return; // Gleiche Position
+        }
+
+        // Finde die ursprüngliche Lehrkraft-Chip
+        const originalChip = document.querySelector(
+            `[data-teacher="${draggedTeacher.teacher}"][data-floor="${draggedTeacher.floor}"][data-day="${draggedTeacher.sourceDay}"][data-break="${draggedTeacher.sourceBreak}"]`
+        );
+
+        if (originalChip) {
+            // Entferne die Lehrkraft von der ursprünglichen Position
+            originalChip.remove();
+
+            // Erstelle neue Lehrkraft-Chip für die Zielposition
+            const newChip = document.createElement('span');
+            newChip.className = 'teacher-chip';
+            newChip.draggable = true;
+            newChip.ondragstart = dragStart;
+            newChip.ondragend = dragEnd;
+            newChip.dataset.teacher = draggedTeacher.teacher;
+            newChip.dataset.floor = draggedTeacher.floor;
+            newChip.dataset.day = targetDay;
+            newChip.dataset.break = targetBreak;
+            newChip.style.cssText = 'display: inline-block; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;';
+            newChip.textContent = draggedTeacher.teacher;
+
+            // Füge zur Zielposition hinzu
+            const teachersContainer = targetFloorContainer.querySelector('.teachers-container');
+
+            // Entferne "—" falls vorhanden
+            const emptyIndicator = teachersContainer.querySelector('span[style*="italic"]');
+            if (emptyIndicator) {
+                emptyIndicator.remove();
+            }
+
+            teachersContainer.appendChild(newChip);
+
+            // Animation für erfolgreiche Verschiebung
+            newChip.style.background = '#d4edda';
+            setTimeout(() => {
+                newChip.style.background = '#e3f2fd';
+            }, 1000);
+
+            // Markiere als geändert
+            hasChanges = true;
+            updateSaveButton();
+        }
+
+        // Reset
+        draggedTeacher = null;
+
+        // Reset alle Highlights
+        document.querySelectorAll('.drop-zone').forEach(zone => {
+            zone.style.background = '';
+            zone.style.border = '1px solid #ddd';
+            zone.style.transform = '';
+        });
+    }
+
+    function updateSaveButton() {
+        const saveButton = document.getElementById('saveChanges');
+        const statusDiv = document.getElementById('changeStatus');
+
+        if (hasChanges) {
+            saveButton.disabled = false;
+            saveButton.style.background = '#e74c3c';
+            saveButton.textContent = '💾 Änderungen speichern (ungespeichert)';
+            statusDiv.textContent = '⚠️ Sie haben ungespeicherte Änderungen';
+            statusDiv.style.color = '#e67e22';
+        } else {
+            saveButton.disabled = true;
+            saveButton.style.background = '#27ae60';
+            saveButton.textContent = '💾 Änderungen speichern';
+            statusDiv.textContent = '';
+        }
+    }
+
+    function resetPlan() {
+        if (hasChanges) {
+            const confirmed = confirm('Möchten Sie wirklich alle Änderungen verwerfen und den ursprünglichen Plan wiederherstellen?');
+            if (confirmed) {
+                location.reload();
+            }
+        } else {
+            location.reload();
+        }
+    }
+
+    async function saveChanges() {
+        if (!hasChanges) return;
+
+        // Sammle alle aktuellen Zuweisungen
+        const assignments = {};
+
+        document.querySelectorAll('.drop-zone').forEach(zone => {
+            const day = parseInt(zone.dataset.day);
+            const breakIndex = parseInt(zone.dataset.break) + 1; // Backend erwartet 1-basierte Indices
+
+            zone.querySelectorAll('.floor-container').forEach(floorContainer => {
+                const floorName = floorContainer.querySelector('strong').textContent.replace(':', '').trim();
+                const teachers = [];
+
+                floorContainer.querySelectorAll('.teacher-chip').forEach(chip => {
+                    teachers.push(chip.dataset.teacher);
+                });
+
+                const key = `${day}-${breakIndex}-${floorName}`;
+                assignments[key] = {
+                    day: day,
+                    break_index: breakIndex,
+                    floor: floorName,
+                    teachers: teachers
+                };
+            });
+        });
+
+        // Speichere Button-Status
+        const saveButton = document.getElementById('saveChanges');
+        const originalText = saveButton.textContent;
+        saveButton.textContent = '⏳ Speichere...';
+        saveButton.disabled = true;
+
+        try {
+            const response = await fetch('/plan/save-changes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    assignments: Object.values(assignments)
+                })
+            });
+
+            if (response.ok) {
+                hasChanges = false;
+                updateSaveButton();
+                saveButton.textContent = '✅ Gespeichert';
+                setTimeout(() => {
+                    updateSaveButton();
+                }, 2000);
+
+                document.getElementById('changeStatus').textContent = '✅ Änderungen erfolgreich gespeichert';
+                document.getElementById('changeStatus').style.color = '#27ae60';
+                setTimeout(() => {
+                    document.getElementById('changeStatus').textContent = '';
+                }, 3000);
+            } else {
+                const error = await response.json();
+                throw new Error(error.detail || 'Unbekannter Fehler');
+            }
+        } catch (error) {
+            alert('❌ Fehler beim Speichern der Änderungen: ' + error.message);
+            saveButton.textContent = originalText;
+            updateSaveButton();
+        }
+    }
+
+    // Verhindere das Verlassen der Seite bei ungespeicherten Änderungen
+    window.addEventListener('beforeunload', function(e) {
+        if (hasChanges) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    // Hover-Effekte für bessere UX
+    document.addEventListener('mouseover', function(e) {
+        if (e.target.classList.contains('teacher-chip')) {
+            e.target.style.background = '#bbdefb';
+            e.target.style.transform = 'scale(1.05)';
+        }
+    });
+
+    document.addEventListener('mouseout', function(e) {
+        if (e.target.classList.contains('teacher-chip')) {
+            e.target.style.background = '#e3f2fd';
+            e.target.style.transform = 'scale(1)';
+        }
+    });
+</script>
+{% endif %}
