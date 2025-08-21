@@ -1,6 +1,4 @@
-{% extends "base.html" %}
-
-{% block content %}
+{% extends "base.html" %} {% block content %}
 <h2>Lehrkräfte</h2>
 
 <p><a href="/admin">CSV hochladen</a></p>
@@ -26,6 +24,7 @@
                 <th>Keine Aufsicht</th>
                 <th>Soll</th>
                 <th>Bevorzugtes Stockwerk</th>
+                <th>Anwesenheitstage</th>
                 <th>Aktionen</th>
             </tr>
         </thead>
@@ -62,6 +61,20 @@
                     </form>
                 </td>
                 <td>
+                    <form method="post" action="/admin/teachers/set-attendance" style="display:inline;">
+                        <input type="hidden" name="teacher_id" value="{{ t.id }}">
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px; font-size: 0.8em;">
+                            {% for day in ['Mo', 'Di', 'Mi', 'Do', 'Fr'] %}
+                            <label style="display: flex; align-items: center; margin-right: 5px;">
+                                <input type="checkbox" name="attendance_days" value="{{ day }}" 
+                                       {% if day in t.get_attendance_days_list() %}checked{% endif %}
+                                       onchange="this.form.submit()">
+                                {{ day }}
+                            </label> {% endfor %}
+                        </div>
+                    </form>
+                </td>
+                <td>
                     <form method="post" action="/admin/teachers/delete" style="display:inline;" onsubmit="return confirm('Lehrkraft {{ t.first_name }} {{ t.last_name }} wirklich löschen?');">
                         <input type="hidden" name="teacher_id" value="{{ t.id }}">
                         <button type="submit">Löschen</button>
@@ -70,7 +83,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="8">Noch keine Lehrkräfte vorhanden.</td>
+                <td colspan="9">Noch keine Lehrkräfte vorhanden.</td>
             </tr>
             {% endfor %}
         </tbody>

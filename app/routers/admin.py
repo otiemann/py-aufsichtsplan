@@ -231,4 +231,27 @@ async def bulk_quota(target_duties: int = Form(...), ids: List[int] = Form([]), 
     return response
 
 
+@router.post("/teachers/set-attendance")
+async def set_attendance(
+    teacher_id: int = Form(...), 
+    attendance_days: List[str] = Form([]), 
+    db: Session = Depends(get_db)
+):
+    """Setzt die Anwesenheitstage für eine Lehrkraft"""
+    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+    if not teacher:
+        response = RedirectResponse(url="/admin/teachers", status_code=303)
+        response.set_cookie("flash", "Lehrkraft nicht gefunden", max_age=5)
+        return response
+    
+    # Setze Anwesenheitstage 
+    teacher.set_attendance_days(attendance_days)
+    db.commit()
+    
+    days_text = ", ".join(attendance_days) if attendance_days else "Keine"
+    response = RedirectResponse(url="/admin/teachers", status_code=303)
+    response.set_cookie("flash", f"Anwesenheitstage für {teacher.last_name} gesetzt: {days_text}", max_age=5)
+    return response
+
+
 

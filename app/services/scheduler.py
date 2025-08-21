@@ -108,6 +108,9 @@ def generate_assignments(
             existing_counts[teacher_id] = cnt
 
     def pick_teacher(d: date, break_index: int, floor_id: int) -> Optional[Teacher]:
+        # Berechne Wochentag (0=Montag, 4=Freitag)
+        weekday = d.weekday()
+        
         already = set(
             t_id
             for (t_id,) in db.query(Assignment.teacher_id)
@@ -116,31 +119,58 @@ def generate_assignments(
             .all()
         )
 
-        # Kandidaten unter Soll
-        candidates_under: List[Tuple[Teacher, int]] = []
-        candidates_all: List[Tuple[Teacher, int]] = []
+        # Kandidaten unter Soll (bevorzugtes Stockwerk)
+        candidates_preferred: List[Tuple[Teacher, int]] = []
+        # Kandidaten unter Soll (andere Stockwerke)
+        candidates_other: List[Tuple[Teacher, int]] = []
+        
         for t, target in eligible:
             if t.id in already:
                 continue
+            
+            # Prüfe Anwesenheit an diesem Wochentag
+            if not t.is_available_on_weekday(weekday):
+                continue
+                
             assigned = existing_counts.get(t.id, 0)
             if assigned >= target:
                 continue
-            tuple_val = (t, target)
+                
+            # Berechne wie viele Aufsichten diese Lehrkraft diese Woche schon hat
+            week_assignments = (
+                db.query(Assignment)
+                .join(DutySlot, DutySlot.id == Assignment.duty_slot_id)
+                .filter(
+                    Assignment.teacher_id == t.id,
+                    DutySlot.date >= start_date,
+                    DutySlot.date <= end_date
+                )
+                .count()
+            )
+            
+            tuple_val = (t, target, week_assignments)
             if t.preferred_floor_id == floor_id:
-                candidates_under.append(tuple_val)
+                candidates_preferred.append(tuple_val)
             else:
-                candidates_all.append(tuple_val)
+                candidates_other.append(tuple_val)
 
-        pool = candidates_under if candidates_under else candidates_all
+        # Bevorzuge Lehrkräfte mit bevorzugtem Stockwerk
+        pool = candidates_preferred if candidates_preferred else candidates_other
         if not pool:
             return None
 
         best_t = None
         best_key = None
-        for t, target in pool:
+        for t, target, week_assignments in pool:
             assigned = existing_counts.get(t.id, 0)
             ratio = assigned / max(target, 1)
-            key = (ratio, assigned, random_bias[t.id])
+            
+            # Verbesserter Verteilungsschlüssel:
+            # 1. Ratio (weniger Aufsichten = besser)
+            # 2. Wochenverteilung (weniger diese Woche = besser)  
+            # 3. Absolute Anzahl
+            # 4. Zufallsfaktor
+            key = (ratio, week_assignments, assigned, random_bias[t.id])
             if best_key is None or key < best_key:
                 best_key = key
                 best_t = t
