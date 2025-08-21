@@ -272,15 +272,28 @@ def generate_assignments(
                 # Berechne verfügbare Tage für diese Lehrkraft
                 available_days = sum(1 for i in range(5) if t.is_available_on_weekday(i))
                 
-                # Kombinierte Bewertung: Tagesverteilung + Stockwerk-Präferenz
+                # NEUE LOGIK: Starke Bevorzugung für Teilzeit-Lehrkräfte an ihren Anwesenheitstagen
+                # Je weniger Tage verfügbar, desto höher die Priorität an diesen Tagen
+                if available_days <= 2:  # 1-2 Tage: Sehr hohe Priorität
+                    part_time_bonus = -2.0
+                elif available_days <= 3:  # 3 Tage: Hohe Priorität
+                    part_time_bonus = -1.0
+                elif available_days <= 4:  # 4 Tage: Mittlere Priorität
+                    part_time_bonus = -0.5
+                else:  # 5 Tage (Vollzeit): Normale Priorität
+                    part_time_bonus = 0.0
+                
+                # Tagesverteilung: Wie gut sind die Aufsichten über die verfügbaren Tage verteilt?
                 day_distribution_factor = days_with_duties / max(available_days, 1)
                 
-                # Stockwerk-Präferenz als Bonus/Malus
+                # Stockwerk-Präferenz als Bonus/Malus (verstärkt)
                 has_floor_preference = (t.preferred_floor_id == floor_id)
-                floor_preference_bonus = -0.3 if has_floor_preference else 0.0
+                floor_preference_bonus = -0.8 if has_floor_preference else 0.0
                 
-                # Kombiniere Tagesverteilung mit Stockwerk-Präferenz
-                combined_distribution_score = day_distribution_factor + floor_preference_bonus
+                # Kombiniere alle Faktoren
+                combined_distribution_score = (day_distribution_factor + 
+                                             floor_preference_bonus + 
+                                             part_time_bonus)
                 
                 key = (
                     combined_distribution_score, # 1. Tagesverteilung + Stockwerk-Präferenz
@@ -298,6 +311,138 @@ def generate_assignments(
         
         return None
 
+    def pick_teacher_fallback_1(d: date, break_index: int, floor_id: int) -> Optional[Teacher]:
+        """FALLBACK 1: Ignoriere Soll-Ziele, alle verfügbaren Lehrkräfte berücksichtigen"""
+        weekday = d.weekday()
+        
+        already = set(
+            t_id for (t_id,) in db.query(Assignment.teacher_id)
+            .join(DutySlot, DutySlot.id == Assignment.duty_slot_id)
+            .filter(DutySlot.date == d, DutySlot.break_index == break_index)
+            .all()
+        )
+        
+        candidates = []
+        for t, target in eligible:
+            if t.id in already:
+                continue
+            if not t.is_available_on_weekday(weekday):
+                continue
+            if not t.is_available_for_supervision(weekday, break_index):
+                continue
+            
+            # Ignoriere Soll-Ziele! Alle verfügbaren Lehrkräfte sind kandidaten
+            existing_breaks = [
+                break_idx for (break_idx,) in 
+                db.query(DutySlot.break_index)
+                .join(Assignment, Assignment.duty_slot_id == DutySlot.id)
+                .filter(Assignment.teacher_id == t.id, DutySlot.date == d)
+                .all()
+            ]
+            
+            # Behalte noch Tageslimit bei
+            if len(existing_breaks) >= 2:
+                continue
+            
+            # Behalte noch aufeinanderfolgende Pausen-Regel bei
+            has_consecutive = any(abs(eb - break_index) == 1 for eb in existing_breaks)
+            if has_consecutive:
+                continue
+            
+            candidates.append(t)
+        
+        # Bevorzuge Lehrkräfte mit Stockwerk-Präferenz
+        preferred_candidates = [t for t in candidates if t.preferred_floor_id == floor_id]
+        if preferred_candidates:
+            return min(preferred_candidates, key=lambda t: existing_counts.get(t.id, 0))
+        elif candidates:
+            return min(candidates, key=lambda t: existing_counts.get(t.id, 0))
+        return None
+
+    def pick_teacher_fallback_2(d: date, break_index: int, floor_id: int) -> Optional[Teacher]:
+        """FALLBACK 2: Ignoriere Tageslimits (mehr als 2 Aufsichten/Tag erlaubt)"""
+        weekday = d.weekday()
+        
+        already = set(
+            t_id for (t_id,) in db.query(Assignment.teacher_id)
+            .join(DutySlot, DutySlot.id == Assignment.duty_slot_id)
+            .filter(DutySlot.date == d, DutySlot.break_index == break_index)
+            .all()
+        )
+        
+        candidates = []
+        for t, target in eligible:
+            if t.id in already:
+                continue
+            if not t.is_available_on_weekday(weekday):
+                continue
+            if not t.is_available_for_supervision(weekday, break_index):
+                continue
+            
+            # Ignoriere Tageslimit! Aber behalte aufeinanderfolgende Pausen-Regel
+            existing_breaks = [
+                break_idx for (break_idx,) in 
+                db.query(DutySlot.break_index)
+                .join(Assignment, Assignment.duty_slot_id == DutySlot.id)
+                .filter(Assignment.teacher_id == t.id, DutySlot.date == d)
+                .all()
+            ]
+            
+            has_consecutive = any(abs(eb - break_index) == 1 for eb in existing_breaks)
+            if has_consecutive:
+                continue
+            
+            candidates.append(t)
+        
+        # Bevorzuge Lehrkräfte mit Stockwerk-Präferenz
+        preferred_candidates = [t for t in candidates if t.preferred_floor_id == floor_id]
+        if preferred_candidates:
+            return min(preferred_candidates, key=lambda t: existing_counts.get(t.id, 0))
+        elif candidates:
+            return min(candidates, key=lambda t: existing_counts.get(t.id, 0))
+        return None
+
+    def pick_teacher_fallback_3(d: date, break_index: int, floor_id: int) -> Optional[Teacher]:
+        """FALLBACK 3: NOTFALL - Ignoriere Unterrichtsstunden, nur Anwesenheit prüfen"""
+        weekday = d.weekday()
+        
+        already = set(
+            t_id for (t_id,) in db.query(Assignment.teacher_id)
+            .join(DutySlot, DutySlot.id == Assignment.duty_slot_id)
+            .filter(DutySlot.date == d, DutySlot.break_index == break_index)
+            .all()
+        )
+        
+        candidates = []
+        for t, target in eligible:
+            if t.id in already:
+                continue
+            if not t.is_available_on_weekday(weekday):
+                continue
+            
+            # Ignoriere ALLES außer aufeinanderfolgenden Pausen
+            existing_breaks = [
+                break_idx for (break_idx,) in 
+                db.query(DutySlot.break_index)
+                .join(Assignment, Assignment.duty_slot_id == DutySlot.id)
+                .filter(Assignment.teacher_id == t.id, DutySlot.date == d)
+                .all()
+            ]
+            
+            has_consecutive = any(abs(eb - break_index) == 1 for eb in existing_breaks)
+            if has_consecutive:
+                continue
+            
+            candidates.append(t)
+        
+        # Bevorzuge Lehrkräfte mit Stockwerk-Präferenz, auch im Notfall
+        preferred_candidates = [t for t in candidates if t.preferred_floor_id == floor_id]
+        if preferred_candidates:
+            return min(preferred_candidates, key=lambda t: existing_counts.get(t.id, 0))
+        elif candidates:
+            return min(candidates, key=lambda t: existing_counts.get(t.id, 0))
+        return None
+
     floor_required: Dict[int, int] = {}
     for f in db.query(Floor).all():
         floor_required[f.id] = max(1, f.required_per_break or 1)
@@ -306,6 +451,9 @@ def generate_assignments(
     # Alle Slots werden gleichberechtigt behandelt
     sorted_slots = sorted(slots, key=lambda slot: (slot.date, slot.break_index, slot.floor_id))
     
+    # MEHRSTUFIGES SCHEDULING: Erst normal, dann mit gelockerten Beschränkungen
+    unassigned_slots = []
+    
     for slot in sorted_slots:
         current_assigned = (
             db.query(Assignment)
@@ -313,30 +461,91 @@ def generate_assignments(
             .count()
         )
         needed = max(0, floor_required.get(slot.floor_id, 1) - current_assigned)
+        
         for _ in range(needed):
             t = pick_teacher(slot.date, slot.break_index, slot.floor_id)
             if t is None:
+                # Merke unbesetzte Slots für Fallback-Strategien
+                unassigned_slots.append(slot)
                 break
             db.add(Assignment(duty_slot_id=slot.id, teacher_id=t.id))
             existing_counts[t.id] = existing_counts.get(t.id, 0) + 1
         db.flush()
+    
+    # FALLBACK-STRATEGIEN für unbesetzte Slots
+    if unassigned_slots:
+        print(f"[DEBUG] {len(unassigned_slots)} Slots unbesetzt, starte Fallback-Strategien...")
+        
+        # FALLBACK 1: Ignoriere Soll-Ziele, verwende alle verfügbaren Lehrkräfte
+        for slot in unassigned_slots[:]:  # Kopie der Liste für sicheres Entfernen
+            t = pick_teacher_fallback_1(slot.date, slot.break_index, slot.floor_id)
+            if t is not None:
+                db.add(Assignment(duty_slot_id=slot.id, teacher_id=t.id))
+                existing_counts[t.id] = existing_counts.get(t.id, 0) + 1
+                unassigned_slots.remove(slot)
+                print(f"  [FALLBACK 1] {slot.date} Pause {slot.break_index} Stockwerk {slot.floor_id}: {t.abbreviation}")
+        
+        db.flush()
+        
+        # FALLBACK 2: Ignoriere Tageslimits (mehr als 2 Aufsichten/Tag erlaubt)
+        if unassigned_slots:
+            for slot in unassigned_slots[:]:
+                t = pick_teacher_fallback_2(slot.date, slot.break_index, slot.floor_id)
+                if t is not None:
+                    db.add(Assignment(duty_slot_id=slot.id, teacher_id=t.id))
+                    existing_counts[t.id] = existing_counts.get(t.id, 0) + 1
+                    unassigned_slots.remove(slot)
+                    print(f"  [FALLBACK 2] {slot.date} Pause {slot.break_index} Stockwerk {slot.floor_id}: {t.abbreviation}")
+            
+            db.flush()
+        
+        # FALLBACK 3: Ignoriere Unterrichtsstunden (Notfall-Zuweisungen)
+        if unassigned_slots:
+            for slot in unassigned_slots[:]:
+                t = pick_teacher_fallback_3(slot.date, slot.break_index, slot.floor_id)
+                if t is not None:
+                    db.add(Assignment(duty_slot_id=slot.id, teacher_id=t.id))
+                    existing_counts[t.id] = existing_counts.get(t.id, 0) + 1
+                    unassigned_slots.remove(slot)
+                    print(f"  [FALLBACK 3] {slot.date} Pause {slot.break_index} Stockwerk {slot.floor_id}: {t.abbreviation} (NOTFALL)")
+            
+            db.flush()
 
     db.commit()
     
-    # Debug: Zeige finale Zuweisungen
+    # Debug: Zeige finale Zuweisungen mit Anwesenheitstag-Info
     print(f"[DEBUG] Scheduling abgeschlossen. Finale Zuweisungen:")
     final_counts = {}
     for t_id, count in existing_counts.items():
-        if count > 0:
-            teacher = next((t for t, _ in eligible if t.id == t_id), None)
-            if teacher:
-                target = teacher_to_target.get(t_id, 0)
-                final_counts[teacher.abbreviation] = f"{count}/{target}"
+        teacher = next((t for t, _ in eligible if t.id == t_id), None)
+        if teacher:
+            target = teacher_to_target.get(t_id, 0)
+            available_days = sum(1 for i in range(5) if teacher.is_available_on_weekday(i))
+            attendance_display = teacher.get_actual_attendance_days_display()
+            final_counts[teacher.abbreviation] = {
+                'count': count,
+                'target': target,
+                'days': available_days,
+                'attendance': attendance_display
+            }
     
-    for abbrev, count_str in sorted(final_counts.items())[:10]:
-        print(f"  - {abbrev}: {count_str}")
-    if len(final_counts) > 10:
-        print(f"  ... und {len(final_counts) - 10} weitere")
+    # Zeige zuerst Lehrkräfte mit zu wenigen Aufsichten
+    underassigned = [(abbrev, data) for abbrev, data in final_counts.items() if data['count'] < data['target']]
+    if underassigned:
+        print(f"  [UNTERBESETZT] {len(underassigned)} Lehrkräfte unter Soll:")
+        for abbrev, data in sorted(underassigned, key=lambda x: x[1]['days'])[:5]:
+            print(f"    - {abbrev}: {data['count']}/{data['target']} ({data['days']} Tage, {data['attendance']})")
+        if len(underassigned) > 5:
+            print(f"    ... und {len(underassigned) - 5} weitere")
+    
+    # Zeige dann gut verteilte Lehrkräfte
+    well_assigned = [(abbrev, data) for abbrev, data in final_counts.items() if data['count'] >= data['target']]
+    if well_assigned:
+        print(f"  [SOLL ERREICHT] {len(well_assigned)} Lehrkräfte:")
+        for abbrev, data in sorted(well_assigned)[:5]:
+            print(f"    - {abbrev}: {data['count']}/{data['target']} ({data['attendance']})")
+        if len(well_assigned) > 5:
+            print(f"    ... und {len(well_assigned) - 5} weitere")
         
     # Zeige unbesetzte Slots
     unassigned_slots = db.query(DutySlot).outerjoin(Assignment).filter(
@@ -346,4 +555,10 @@ def generate_assignments(
     ).count()
     
     if unassigned_slots > 0:
-        print(f"[WARNING] {unassigned_slots} Slots blieben unbesetzt!")
+        print(f"[ERROR] {unassigned_slots} Slots konnten NICHT besetzt werden!")
+        print("Mögliche Gründe:")
+        print("- Zu wenige Lehrkräfte mit Soll-Aufsichten > 0")
+        print("- Alle Lehrkräfte haben ungünstige Stundenpläne")
+        print("- Zu restriktive Anwesenheitstage-Einstellungen")
+    else:
+        print(f"[SUCCESS] ALLE Slots erfolgreich besetzt!")
