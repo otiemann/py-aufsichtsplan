@@ -14,8 +14,8 @@ class Teacher(Base):
     department = Column(String(100), nullable=True)
     exempt = Column(Boolean, nullable=False, default=False)
     preferred_floor_id = Column(Integer, ForeignKey("floors.id", ondelete="SET NULL"), nullable=True)
-    # Anwesenheitstage: Bitflags für Mo=1, Di=2, Mi=4, Do=8, Fr=16
-    # Standard: 31 = alle Tage (11111 binär)
+    # Anwesenheitstage: Bitflags für Wochentage Mo=1, Di=2, Mi=4, Do=8, Fr=16
+    # Standard: 31 = Mo+Di+Mi+Do+Fr = alle Wochentage (binär: 11111)
     attendance_days = Column(Integer, nullable=False, default=31)
 
     quota = relationship("TeacherQuota", back_populates="teacher", uselist=False, cascade="all, delete-orphan")
