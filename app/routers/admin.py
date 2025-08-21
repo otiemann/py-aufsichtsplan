@@ -1,4 +1,5 @@
 from typing import List, Optional, Union
+import os
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.requests import Request
@@ -10,6 +11,7 @@ import io
 
 from ..database import get_db
 from ..models import Teacher, TeacherQuota, Floor
+from ..services.gpu_import import import_gpu_file, clear_lessons, get_lesson_stats, update_attendance_from_lessons
 
 router = APIRouter()
 
@@ -23,8 +25,12 @@ except Exception:
 
 
 @router.get("/")
-async def admin_index(request: Request):
-    return templates.TemplateResponse("admin/index.html", {"request": request})
+async def admin_index(request: Request, db: Session = Depends(get_db)):
+    lesson_stats = get_lesson_stats(db)
+    return templates.TemplateResponse("admin/index.html", {
+        "request": request, 
+        "lesson_stats": lesson_stats
+    })
 
 
 @router.get("/teachers")
@@ -283,6 +289,59 @@ async def bulk_set_attendance(
     days_text = ", ".join(bulk_days) if bulk_days else "Keine Tage"
     response = RedirectResponse(url="/admin/teachers", status_code=303)
     response.set_cookie("flash", f"Anwesenheitstage für {len(teachers)} Lehrkräfte gesetzt: {days_text}", max_age=5)
+    return response
+
+
+@router.post("/import-gpu")
+async def import_gpu(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Importiert Stundenplandaten aus GPU001.TXT"""
+    if not file.filename or not file.filename.endswith('.TXT'):
+        response = RedirectResponse(url="/admin", status_code=303)
+        response.set_cookie("flash", "Bitte eine .TXT-Datei auswählen", max_age=5)
+        return response
+    
+    try:
+        # Temporäre Datei speichern
+        temp_path = f"/tmp/{file.filename}"
+        with open(temp_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        
+        # Importieren
+        stats = import_gpu_file(db, temp_path)
+        
+        # Temporäre Datei löschen
+        os.unlink(temp_path)
+        
+        response = RedirectResponse(url="/admin", status_code=303)
+        flash_msg = f"GPU-Import erfolgreich: {stats['imported']} Stunden importiert, Anwesenheitstage automatisch aktualisiert"
+        if stats['unknown_teachers'] > 0:
+            flash_msg += f", {stats['unknown_teachers']} unbekannte Lehrkräfte ignoriert"
+        
+        response.set_cookie("flash", flash_msg, max_age=10)
+        return response
+        
+    except Exception as e:
+        response = RedirectResponse(url="/admin", status_code=303)
+        response.set_cookie("flash", f"Fehler beim GPU-Import: {str(e)}", max_age=10)
+        return response
+
+
+@router.post("/clear-lessons")
+async def clear_lessons_route(db: Session = Depends(get_db)):
+    """Löscht alle Unterrichtsstunden"""
+    count = clear_lessons(db)
+    response = RedirectResponse(url="/admin", status_code=303)
+    response.set_cookie("flash", f"{count} Unterrichtsstunden gelöscht", max_age=5)
+    return response
+
+
+@router.post("/update-attendance-from-lessons")
+async def update_attendance_from_lessons_route(db: Session = Depends(get_db)):
+    """Aktualisiert Anwesenheitstage aller Lehrkräfte basierend auf ihren Unterrichtsstunden"""
+    count = update_attendance_from_lessons(db)
+    response = RedirectResponse(url="/admin", status_code=303)
+    response.set_cookie("flash", f"Anwesenheitstage von {count} Lehrkräften aus Stundenplan aktualisiert", max_age=5)
     return response
 
 

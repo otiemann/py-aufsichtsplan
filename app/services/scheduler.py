@@ -89,7 +89,26 @@ def generate_assignments(
             eligible.append((t, target))
 
     if not eligible:
+        print("[DEBUG] Keine geeigneten Lehrkräfte für Scheduler gefunden!")
         return
+    
+    # Debug: Zeige alle Lehrkräfte mit ihren Zielen
+    print(f"[DEBUG] {len(eligible)} Lehrkräfte für Scheduler:")
+    for t, target in eligible[:10]:  # Zeige erste 10
+        attendance_days = t.get_actual_attendance_days_display()
+        print(f"  - {t.abbreviation}: Ziel {target}, Anwesend: {attendance_days}")
+    if len(eligible) > 10:
+        print(f"  ... und {len(eligible) - 10} weitere")
+    
+    # Debug: Zeige auch Lehrkräfte OHNE Ziele
+    excluded_teachers = [t for t in teachers if not (t.quota and t.quota.target_duties > 0)]
+    if excluded_teachers:
+        print(f"[DEBUG] {len(excluded_teachers)} Lehrkräfte OHNE Soll-Aufsichten (nicht berücksichtigt):")
+        for t in excluded_teachers[:10]:
+            quota_val = t.quota.target_duties if t.quota else "Keine Quota"
+            print(f"  - {t.abbreviation}: {quota_val}")
+        if len(excluded_teachers) > 10:
+            print(f"  ... und {len(excluded_teachers) - 10} weitere")
 
     # zufälliger Bias pro Lehrkraft für diese Planungsrunde
     random_bias: Dict[int, float] = {t.id: random.random() for t, _ in eligible}
@@ -119,21 +138,68 @@ def generate_assignments(
             .all()
         )
 
+        # Debug: Protokolliere warum Lehrkräfte ausgeschlossen werden
+        debug_excluded = []
+        
         # ALLE verfügbaren Kandidaten sammeln (keine Trennung nach Präferenz)
         all_candidates: List[Tuple[Teacher, int]] = []
         for t, target in eligible:
             if t.id in already:
+                debug_excluded.append(f"{t.abbreviation}: bereits eingeteilt")
                 continue
             
             # Prüfe Anwesenheit an diesem Wochentag
             if not t.is_available_on_weekday(weekday):
+                debug_excluded.append(f"{t.abbreviation}: nicht anwesend {['Mo','Di','Mi','Do','Fr'][weekday]}")
+                continue
+            
+            # Prüfe ob verfügbar für Pausenaufsicht (ohne Anwesenheitsprüfung)
+            if not t.is_available_for_supervision(weekday, break_index):
+                # Detaillierte Analyse warum nicht verfügbar
+                relevant_hours = []
+                if break_index == 1:
+                    relevant_hours = [1]
+                elif break_index == 2:
+                    relevant_hours = [2, 3]
+                elif break_index == 3:
+                    relevant_hours = [4, 5]
+                elif break_index == 4:
+                    relevant_hours = [6, 7]
+                
+                debug_excluded.append(f"{t.abbreviation}: kein Unterricht in Stunden {relevant_hours}")
                 continue
                 
             assigned = existing_counts.get(t.id, 0)
             if assigned >= target:
+                debug_excluded.append(f"{t.abbreviation}: Ziel erreicht ({assigned}/{target})")
                 continue
             
             all_candidates.append((t, target))
+        
+        # Debug-Ausgabe nur wenn keine Kandidaten gefunden
+        if not all_candidates and debug_excluded:
+            print(f"[DEBUG] Keine Kandidaten für {d} Pause {break_index} Stockwerk {floor_id}:")
+            for reason in debug_excluded[:5]:  # Zeige nur erste 5
+                print(f"  - {reason}")
+            if len(debug_excluded) > 5:
+                print(f"  ... und {len(debug_excluded) - 5} weitere")
+            
+            # Bei den ersten 3 problematischen Slots: Zeige detaillierte Stundenplan-Info
+            if len([r for r in debug_excluded if "kein Unterricht" in r]) >= 3:
+                sample_teacher = next((t for t, _ in eligible if any(f"{t.abbreviation}:" in r for r in debug_excluded)), None)
+                if sample_teacher:
+                    day_name = ['Mo','Di','Mi','Do','Fr'][weekday]
+                    lessons_today = [lesson.hour for lesson in sample_teacher.lessons if lesson.weekday == weekday]
+                    relevant_hours = []
+                    if break_index == 1:
+                        relevant_hours = [1]
+                    elif break_index == 2:
+                        relevant_hours = [2, 3]
+                    elif break_index == 3:
+                        relevant_hours = [4, 5]
+                    elif break_index == 4:
+                        relevant_hours = [6, 7]
+                    print(f"  [INFO] Beispiel {sample_teacher.abbreviation} {day_name}: Hat Stunden {sorted(lessons_today)}, braucht Stunden {relevant_hours}")
 
         if not all_candidates:
             return None
@@ -256,3 +322,28 @@ def generate_assignments(
         db.flush()
 
     db.commit()
+    
+    # Debug: Zeige finale Zuweisungen
+    print(f"[DEBUG] Scheduling abgeschlossen. Finale Zuweisungen:")
+    final_counts = {}
+    for t_id, count in existing_counts.items():
+        if count > 0:
+            teacher = next((t for t, _ in eligible if t.id == t_id), None)
+            if teacher:
+                target = teacher_to_target.get(t_id, 0)
+                final_counts[teacher.abbreviation] = f"{count}/{target}"
+    
+    for abbrev, count_str in sorted(final_counts.items())[:10]:
+        print(f"  - {abbrev}: {count_str}")
+    if len(final_counts) > 10:
+        print(f"  ... und {len(final_counts) - 10} weitere")
+        
+    # Zeige unbesetzte Slots
+    unassigned_slots = db.query(DutySlot).outerjoin(Assignment).filter(
+        Assignment.id.is_(None),
+        DutySlot.date >= start_date,
+        DutySlot.date <= end_date
+    ).count()
+    
+    if unassigned_slots > 0:
+        print(f"[WARNING] {unassigned_slots} Slots blieben unbesetzt!")

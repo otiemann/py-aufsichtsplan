@@ -1,23 +1,88 @@
-{% extends "base.html" %}
+{% extends "base.html" %} {% block content %}
+<h2>Admin - Daten Import</h2>
 
-{% block content %}
-<h2>Admin - CSV Import</h2>
-<p>Laden Sie hier eine CSV-Datei mit Lehrkräften hoch.</p>
+<!-- Lehrkräfte CSV Import -->
+<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #007bff;">
+    <h3>📊 Lehrkräfte CSV Import</h3>
+    <p>Laden Sie hier eine CSV-Datei mit Lehrkräften hoch.</p>
 
-<form method="post" action="/admin/teachers/upload" enctype="multipart/form-data" style="margin-bottom: 2rem;">
-    <div style="margin-bottom: 1rem;">
-        <label>Datei (CSV): <input type="file" name="file" accept=".csv" required></label>
+    <form method="post" action="/admin/teachers/upload" enctype="multipart/form-data" style="margin-bottom: 1rem;">
+        <div style="margin-bottom: 1rem;">
+            <label>Datei (CSV): <input type="file" name="file" accept=".csv" required></label>
+        </div>
+        <div style="margin-bottom: 1rem;">
+            <label>Trennzeichen: <input type="text" name="delimiter" value="," maxlength="1" style="width:3rem"></label>
+        </div>
+        <button type="submit" style="padding: 0.8rem 1.5rem; background: #007bff; color: white; border: none; border-radius: 5px;">CSV-Datei hochladen</button>
+    </form>
+
+    <div style="background: #e3f2fd; padding: 1rem; border-radius: 5px;">
+        <h4>Erwartete Spalten:</h4>
+        <p>Mindestens erforderlich: <strong>Nachname</strong> und <strong>Vorname</strong></p>
+        <p>Optional: <strong>Kürzel</strong>, <strong>E-Mail</strong>, <strong>Fachbereich</strong></p>
+        <p><small>Deutsche und englische Spaltennamen werden automatisch erkannt.</small></p>
     </div>
-    <div style="margin-bottom: 1rem;">
-        <label>Trennzeichen: <input type="text" name="delimiter" value="," maxlength="1" style="width:3rem"></label>
-    </div>
-    <button type="submit">CSV-Datei hochladen</button>
-</form>
+</div>
 
-<div style="background: #f8f9fa; padding: 1rem; border-radius: 5px; border-left: 4px solid #007bff;">
-    <h4>Erwartete Spalten:</h4>
-    <p>Mindestens erforderlich: <strong>Nachname</strong> und <strong>Vorname</strong></p>
-    <p>Optional: <strong>Kürzel</strong>, <strong>E-Mail</strong>, <strong>Fachbereich</strong></p>
-    <p><small>Deutsche und englische Spaltennamen werden automatisch erkannt.</small></p>
+<!-- Stundenplan GPU Import -->
+<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #28a745;">
+    <h3>⏰ Stundenplan Import (GPU001.TXT)</h3>
+    <p>Importieren Sie Unterrichtsstunden aus der GPU001.TXT-Datei für realistische Aufsichtspläne.</p>
+
+    <form method="post" action="/admin/import-gpu" enctype="multipart/form-data" style="margin-bottom: 1rem;">
+        <div style="margin-bottom: 1rem;">
+            <label>GPU001.TXT Datei: <input type="file" name="file" accept=".TXT,.txt" required></label>
+        </div>
+        <button type="submit" style="padding: 0.8rem 1.5rem; background: #28a745; color: white; border: none; border-radius: 5px;">📅 Stundenplan importieren</button>
+    </form>
+
+    <div style="background: #e8f5e8; padding: 1rem; border-radius: 5px;">
+        <h4>Format der GPU001.TXT:</h4>
+        <p><strong>Spalte 3:</strong> Kürzel der Lehrkraft (z.B. "HOO")</p>
+        <p><strong>Spalte 6:</strong> Wochentag (1=Mo, 2=Di, 3=Mi, 4=Do, 5=Fr)</p>
+        <p><strong>Spalte 7:</strong> Unterrichtsstunde (1-20, inkl. Nachmittag)</p>
+        <p><small><strong>Beispiel:</strong> 4063;"12ZU4A";"HOO";"ENG";"3035";2;13;;</small></p>
+        <p><small>Lehrkräfte können nur Aufsicht machen, wenn sie in der betreffenden Stunde keinen Unterricht haben.</small></p>
+        <p><small><strong>Hinweis:</strong> Die Anwesenheitstage werden automatisch aus dem Stundenplan abgeleitet. Sie können diese danach bei Bedarf manuell anpassen.</small></p>
+    </div>
+
+    <div style="margin-top: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+        <form method="post" action="/admin/update-attendance-from-lessons" onsubmit="return confirm('Anwesenheitstage aller Lehrkräfte aus dem Stundenplan aktualisieren?');">
+            <button type="submit" style="padding: 0.5rem 1rem; background: #17a2b8; color: white; border: none; border-radius: 5px;">📅 Anwesenheitstage aus Stundenplan setzen</button>
+        </form>
+        <form method="post" action="/admin/clear-lessons" onsubmit="return confirm('Alle Unterrichtsstunden wirklich löschen?');">
+            <button type="submit" style="padding: 0.5rem 1rem; background: #dc3545; color: white; border: none; border-radius: 5px;">🗑️ Alle Stunden löschen</button>
+        </form>
+    </div>
+
+    {% if lesson_stats %}
+    <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
+        <h4 style="margin-top: 0;">📊 Aktuelle Stundenplan-Statistiken:</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+                <strong>Gesamte Unterrichtsstunden:</strong> {{ lesson_stats.total_lessons }}
+            </div>
+            <div>
+                <strong>Lehrkräfte mit Stunden:</strong> {{ lesson_stats.teachers_with_lessons }}
+            </div>
+            <div>
+                <strong>Unbekannte Kürzel gefunden:</strong> {{ lesson_stats.unknown_teachers }}
+            </div>
+        </div>
+
+        {% if lesson_stats.lessons_by_day %}
+        <div style="margin-top: 1rem;">
+            <strong>Stunden pro Wochentag:</strong> {% for day, count in lesson_stats.lessons_by_day.items() %}
+            <span style="margin: 0 10px; padding: 2px 6px; background: #e9ecef; border-radius: 3px;">
+                    {{ day }}: {{ count }}
+                </span> {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<div style="margin-top: 2rem;">
+    <a href="/admin/teachers" style="text-decoration: none; padding: 0.8rem 1.5rem; background: #6c757d; color: white; border-radius: 5px;">👥 Lehrkräfte verwalten</a>
 </div>
 {% endblock %}
