@@ -1,6 +1,4 @@
-{% extends "base.html" %}
-
-{% block content %}
+{% extends "base.html" %} {% block content %}
 <h2>Plan generieren und anzeigen</h2>
 
 <form method="post" action="/plan/generate" style="margin-bottom:2rem;">
@@ -12,7 +10,7 @@
     </div>
 </form>
 
-<h3>Aktueller Wochenplan</h3>
+<h3>Pausenaufsichtsplan</h3>
 {% include "plan/week_grid.html" %}
 
 <h3>Aufsichten pro Lehrkraft (aktuelle Woche)</h3>

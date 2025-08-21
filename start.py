@@ -56,7 +56,7 @@ def notify_user(url: str) -> None:
 			import ctypes  # type: ignore
 			MB_ICONINFORMATION = 0x40
 			MB_TOPMOST = 0x00040000
-			ctypes.windll.user32.MessageBoxW(None, f"Die Anwendung laeuft. Oeffne im Browser: {url}", "Vertretungsplan", MB_ICONINFORMATION | MB_TOPMOST)
+			ctypes.windll.user32.MessageBoxW(None, f"Die Anwendung laeuft. Oeffne im Browser: {url}", "Pausenaufsichtsplan", MB_ICONINFORMATION | MB_TOPMOST)
 		except Exception:
 			pass
 

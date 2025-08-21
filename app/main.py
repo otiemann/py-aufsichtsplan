@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from .database import Base, engine, SessionLocal, SQLALCHEMY_DATABASE_URL
 
-app = FastAPI(title="Vertretungsplan / Pausenaufsicht")
+app = FastAPI(title="Pausenaufsichtsplan")
 
 RES_DIR_ENV = os.environ.get("APP_RESOURCES_DIR") or os.getcwd()
 

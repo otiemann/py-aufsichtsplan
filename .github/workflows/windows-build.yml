@@ -27,7 +27,7 @@ jobs:
 
       - name: Build executable (onefile)
         run: |
-          pyinstaller --noconsole --onefile --name vertretungsplan ^
+          pyinstaller --noconsole --onefile --name Aufsichtsplan ^
             --add-data "app/templates;app/templates" ^
             --add-data "app/static;app/static" ^
             --hidden-import fastapi ^
@@ -47,12 +47,12 @@ jobs:
       - name: Upload onefile artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vertretungsplan-windows
-          path: dist/vertretungsplan.exe
+          name: aufsichtsplan-windows
+          path: dist/Aufsichtsplan.exe
 
       - name: Build folder (onedir)
         run: |
-          pyinstaller --noconsole --onedir --name vertretungsplan ^
+          pyinstaller --noconsole --onedir --name Aufsichtsplan ^
             --add-data "app/templates;app/templates" ^
             --add-data "app/static;app/static" ^
             start.py
@@ -61,5 +61,5 @@ jobs:
       - name: Upload onedir artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vertretungsplan-windows-onedir
-          path: dist/vertretungsplan/**
+          name: aufsichtsplan-windows-onedir
+          path: dist/Aufsichtsplan/**
