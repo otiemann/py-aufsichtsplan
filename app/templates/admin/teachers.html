@@ -14,10 +14,20 @@
         <button type="submit" formaction="/admin/teachers/bulk-quota" formmethod="post">Soll (Masse) setzen</button>
     </div>
 
+    <div style="margin: .5rem 0; padding: .5rem; background: #f0f0f0; border-radius: 5px;">
+        <strong>Anwesenheitstage (Masse):</strong>
+        <label style="margin-left: 10px;"><input type="checkbox" name="bulk_days" value="Mo" checked> Mo</label>
+        <label style="margin-left: 10px;"><input type="checkbox" name="bulk_days" value="Di" checked> Di</label>
+        <label style="margin-left: 10px;"><input type="checkbox" name="bulk_days" value="Mi" checked> Mi</label>
+        <label style="margin-left: 10px;"><input type="checkbox" name="bulk_days" value="Do" checked> Do</label>
+        <label style="margin-left: 10px;"><input type="checkbox" name="bulk_days" value="Fr" checked> Fr</label>
+        <button type="submit" formaction="/admin/teachers/bulk-attendance" formmethod="post" style="margin-left: 15px;">Anwesenheitstage (Masse) setzen</button>
+    </div>
+
     <table>
         <thead>
             <tr>
-                <th style="width:2rem;"><input type="checkbox" onclick="document.querySelectorAll('input[name=ids]') .forEach(cb=>cb.checked=this.checked)"></th>
+                <th style="width:2rem;"><input type="checkbox" onclick="document.querySelectorAll('input[name=ids]').forEach(cb=>cb.checked=this.checked)"></th>
                 <th>Kürzel</th>
                 <th>Nachname</th>
                 <th>Vorname</th>
@@ -32,20 +42,19 @@
             {% for t in teachers %}
             <tr>
                 <td><input type="checkbox" name="ids" value="{{ t.id }}"></td>
-                <td>{{ t.abbreviation or '' }}</td>
+                <td>{{ t.abbreviation }}</td>
                 <td>{{ t.last_name }}</td>
                 <td>{{ t.first_name }}</td>
                 <td>
                     <form method="post" action="/admin/teachers/set-exempt" style="display:inline;">
                         <input type="hidden" name="teacher_id" value="{{ t.id }}">
-                        <input type="hidden" name="value" value="{{ 0 if t.exempt else 1 }}">
-                        <button type="submit">{{ 'Ja' if t.exempt else 'Nein' }}</button>
+                        <input type="checkbox" name="exempt" value="true" onchange="this.form.submit()" {% if t.exempt %}checked{% endif %}>
                     </form>
                 </td>
                 <td>
                     <form method="post" action="/admin/teachers/set-quota" style="display:inline;">
                         <input type="hidden" name="teacher_id" value="{{ t.id }}">
-                        <input type="number" name="target_duties" value="{{ t.quota.target_duties if t.quota else 0 }}" min="0" style="width:4rem;">
+                        <input type="number" name="target_duties" min="0" value="{{ t.quota.target_duties if t.quota else 0 }}" style="width:4rem">
                         <button type="submit">Set</button>
                     </form>
                 </td>
@@ -60,39 +69,27 @@
                         </select>
                     </form>
                 </td>
-                <td>
-                    {% set days = t.attendance_days or 31 %}
-                    <div style="display: flex; gap: 3px; font-size: 0.75em;">
-                        <label title="Montag" style="cursor: pointer;">
-                            <input type="checkbox" style="margin: 0 2px 0 0;" 
-                                   {% if days & 1 %}checked{% endif %}
-                                   onchange="toggleAttendance({{ t.id }}, 'Mo', this.checked)">
-                            Mo
-                        </label>
-                        <label title="Dienstag" style="cursor: pointer;">
-                            <input type="checkbox" style="margin: 0 2px 0 0;" 
-                                   {% if days & 2 %}checked{% endif %}
-                                   onchange="toggleAttendance({{ t.id }}, 'Di', this.checked)">
-                            Di
-                        </label>
-                        <label title="Mittwoch" style="cursor: pointer;">
-                            <input type="checkbox" style="margin: 0 2px 0 0;" 
-                                   {% if days & 4 %}checked{% endif %}
-                                   onchange="toggleAttendance({{ t.id }}, 'Mi', this.checked)">
-                            Mi
-                        </label>
-                        <label title="Donnerstag" style="cursor: pointer;">
-                            <input type="checkbox" style="margin: 0 2px 0 0;" 
-                                   {% if days & 8 %}checked{% endif %}
-                                   onchange="toggleAttendance({{ t.id }}, 'Do', this.checked)">
-                            Do
-                        </label>
-                        <label title="Freitag" style="cursor: pointer;">
-                            <input type="checkbox" style="margin: 0 2px 0 0;" 
-                                   {% if days & 16 %}checked{% endif %}
-                                   onchange="toggleAttendance({{ t.id }}, 'Fr', this.checked)">
-                            Fr
-                        </label>
+                <td style="font-size: 0.8em;">
+                    <div id="attendance_display_{{ t.id }}">
+                        {% if t.attendance_days == 31 %}
+                        <span style="color: green;">{{ t.get_attendance_days_display() }}</span> {% elif t.attendance_days %}
+                        <span style="color: orange;">{{ t.get_attendance_days_display() }}</span> {% else %}
+                        <span style="color: red;">Keine</span> {% endif %}
+                        <a href="#" onclick="showAttendanceEdit({{ t.id }}); return false;" style="margin-left: 8px; font-size: 0.8em;">✏️</a>
+                    </div>
+                    <div id="attendance_edit_{{ t.id }}" style="display:none;">
+                        <form method="post" action="/admin/teachers/set-attendance" style="margin: 0;">
+                            <input type="hidden" name="teacher_id" value="{{ t.id }}"> {% set days = t.attendance_days or 31 %}
+                            <div style="display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 4px;">
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Mo" {% if days & 1 %}checked{% endif %}> Mo</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Di" {% if days & 2 %}checked{% endif %}> Di</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Mi" {% if days & 4 %}checked{% endif %}> Mi</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Do" {% if days & 8 %}checked{% endif %}> Do</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Fr" {% if days & 16 %}checked{% endif %}> Fr</label>
+                            </div>
+                            <button type="submit" style="font-size: 0.8em;">💾</button>
+                            <button type="button" onclick="hideAttendanceEdit({{ t.id }}); return false;" style="font-size: 0.8em;">❌</button>
+                        </form>
                     </div>
                 </td>
                 <td>
@@ -112,44 +109,15 @@
 </form>
 
 <script>
-    function toggleAttendance(teacherId, day, isChecked) {
-        // Sammle alle aktuellen Anwesenheitstage für diese Lehrkraft
-        const checkboxes = document.querySelectorAll(`input[onchange*="${teacherId}"]`);
-        const selectedDays = [];
+    function showAttendanceEdit(teacherId) {
+        document.getElementById('attendance_display_' + teacherId).style.display = 'none';
+        document.getElementById('attendance_edit_' + teacherId).style.display = 'block';
+    }
 
-        checkboxes.forEach(cb => {
-            if (cb.checked) {
-                // Extrahiere den Tag aus dem onchange-Attribut
-                const match = cb.getAttribute('onchange').match(/'(\w+)'/);
-                if (match) {
-                    selectedDays.push(match[1]);
-                }
-            }
-        });
-
-        // Erstelle ein verstecktes Formular und sende es ab
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/admin/teachers/set-attendance';
-
-        // Teacher ID
-        const teacherInput = document.createElement('input');
-        teacherInput.type = 'hidden';
-        teacherInput.name = 'teacher_id';
-        teacherInput.value = teacherId;
-        form.appendChild(teacherInput);
-
-        // Anwesenheitstage
-        selectedDays.forEach(day => {
-            const dayInput = document.createElement('input');
-            dayInput.type = 'hidden';
-            dayInput.name = 'attendance_days';
-            dayInput.value = day;
-            form.appendChild(dayInput);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
+    function hideAttendanceEdit(teacherId) {
+        document.getElementById('attendance_display_' + teacherId).style.display = 'block';
+        document.getElementById('attendance_edit_' + teacherId).style.display = 'none';
     }
 </script>
+
 {% endblock %}

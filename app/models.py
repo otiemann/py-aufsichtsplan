@@ -15,8 +15,7 @@ class Teacher(Base):
     exempt = Column(Boolean, nullable=False, default=False)
     preferred_floor_id = Column(Integer, ForeignKey("floors.id", ondelete="SET NULL"), nullable=True)
     # Anwesenheitstage: Bitflags für Wochentage Mo=1, Di=2, Mi=4, Do=8, Fr=16
-    # Standard: 31 = Mo+Di+Mi+Do+Fr = alle Wochentage (binär: 11111)
-    attendance_days = Column(Integer, nullable=False, default=31)
+    attendance_days = Column(Integer, nullable=True, default=31)
 
     quota = relationship("TeacherQuota", back_populates="teacher", uselist=False, cascade="all, delete-orphan")
     assignments = relationship("Assignment", back_populates="teacher")
@@ -26,16 +25,30 @@ class Teacher(Base):
         UniqueConstraint("first_name", "last_name", "abbreviation", name="uq_teacher_name_abbrev"),
     )
     
+    def get_attendance_days_display(self) -> str:
+        """Gibt Anwesenheitstage als lesbaren String zurück"""
+        if not self.attendance_days:
+            return "Keine"
+        
+        days = []
+        if self.attendance_days & 1: days.append("Mo")
+        if self.attendance_days & 2: days.append("Di")
+        if self.attendance_days & 4: days.append("Mi")
+        if self.attendance_days & 8: days.append("Do")
+        if self.attendance_days & 16: days.append("Fr")
+        
+        if len(days) == 5:
+            return "Mo-Fr"
+        elif len(days) == 0:
+            return "Keine"
+        else:
+            return " ".join(days)
+    
     def is_available_on_weekday(self, weekday: int) -> bool:
         """Prüft ob Lehrkraft an einem Wochentag verfügbar ist (0=Montag, 4=Freitag)"""
         if weekday < 0 or weekday > 4:
             return False
         return bool(self.attendance_days & (1 << weekday))
-    
-    def get_attendance_days_list(self) -> list:
-        """Gibt Liste der Anwesenheitstage zurück ['Mo', 'Di', ...]"""
-        days = ['Mo', 'Di', 'Mi', 'Do', 'Fr']
-        return [days[i] for i in range(5) if self.is_available_on_weekday(i)]
     
     def set_attendance_days(self, days_list: list) -> None:
         """Setzt Anwesenheitstage aus Liste ['Mo', 'Di', ...]"""
@@ -44,6 +57,8 @@ class Teacher(Base):
         for day in days_list:
             if day in day_map:
                 self.attendance_days |= (1 << day_map[day])
+    
+
 
 
 class Floor(Base):

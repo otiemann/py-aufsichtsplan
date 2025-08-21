@@ -234,7 +234,7 @@ async def bulk_quota(target_duties: int = Form(...), ids: List[int] = Form([]), 
 @router.post("/teachers/set-attendance")
 async def set_attendance(
     teacher_id: int = Form(...), 
-    attendance_days: List[str] = Form([]), 
+    attendance_days: Optional[List[str]] = Form(None), 
     db: Session = Depends(get_db)
 ):
     """Setzt die Anwesenheitstage (Wochentage) für eine Lehrkraft"""
@@ -244,13 +244,41 @@ async def set_attendance(
         response.set_cookie("flash", "Lehrkraft nicht gefunden", max_age=5)
         return response
     
-    # Setze Anwesenheitstage (Wochentage Mo-Fr)
+    # Setze Anwesenheitstage basierend auf Checkboxen
+    if attendance_days is None:
+        attendance_days = []
+    
     teacher.set_attendance_days(attendance_days)
     db.commit()
     
-    days_text = ", ".join(attendance_days) if attendance_days else "Keine Wochentage"
+    days_text = ", ".join(attendance_days) if attendance_days else "Keine Tage"
     response = RedirectResponse(url="/admin/teachers", status_code=303)
     response.set_cookie("flash", f"Anwesenheitstage für {teacher.last_name} gesetzt: {days_text}", max_age=5)
+    return response
+
+
+@router.post("/teachers/bulk-attendance")
+async def bulk_set_attendance(
+    ids: List[int] = Form([]),
+    bulk_days: List[str] = Form([]),
+    db: Session = Depends(get_db)
+):
+    """Setzt Anwesenheitstage für mehrere Lehrkräfte gleichzeitig"""
+    if not ids:
+        response = RedirectResponse(url="/admin/teachers", status_code=303)
+        response.set_cookie("flash", "Keine Lehrkräfte ausgewählt", max_age=5)
+        return response
+    
+    teachers = db.query(Teacher).filter(Teacher.id.in_(ids)).all()
+    
+    for teacher in teachers:
+        teacher.set_attendance_days(bulk_days)
+    
+    db.commit()
+    
+    days_text = ", ".join(bulk_days) if bulk_days else "Keine Tage"
+    response = RedirectResponse(url="/admin/teachers", status_code=303)
+    response.set_cookie("flash", f"Anwesenheitstage für {len(teachers)} Lehrkräfte gesetzt: {days_text}", max_age=5)
     return response
 
 

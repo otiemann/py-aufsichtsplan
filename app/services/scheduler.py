@@ -119,11 +119,9 @@ def generate_assignments(
             .all()
         )
 
-        # Kandidaten unter Soll (bevorzugtes Stockwerk)
-        candidates_preferred: List[Tuple[Teacher, int]] = []
-        # Kandidaten unter Soll (andere Stockwerke)
-        candidates_other: List[Tuple[Teacher, int]] = []
-        
+        # Kandidaten unter Soll
+        candidates_under: List[Tuple[Teacher, int]] = []
+        candidates_all: List[Tuple[Teacher, int]] = []
         for t, target in eligible:
             if t.id in already:
                 continue
@@ -135,42 +133,22 @@ def generate_assignments(
             assigned = existing_counts.get(t.id, 0)
             if assigned >= target:
                 continue
-                
-            # Berechne wie viele Aufsichten diese Lehrkraft diese Woche schon hat
-            week_assignments = (
-                db.query(Assignment)
-                .join(DutySlot, DutySlot.id == Assignment.duty_slot_id)
-                .filter(
-                    Assignment.teacher_id == t.id,
-                    DutySlot.date >= start_date,
-                    DutySlot.date <= end_date
-                )
-                .count()
-            )
-            
-            tuple_val = (t, target, week_assignments)
+            tuple_val = (t, target)
             if t.preferred_floor_id == floor_id:
-                candidates_preferred.append(tuple_val)
+                candidates_under.append(tuple_val)
             else:
-                candidates_other.append(tuple_val)
+                candidates_all.append(tuple_val)
 
-        # Bevorzuge Lehrkräfte mit bevorzugtem Stockwerk
-        pool = candidates_preferred if candidates_preferred else candidates_other
+        pool = candidates_under if candidates_under else candidates_all
         if not pool:
             return None
 
         best_t = None
         best_key = None
-        for t, target, week_assignments in pool:
+        for t, target in pool:
             assigned = existing_counts.get(t.id, 0)
             ratio = assigned / max(target, 1)
-            
-            # Verbesserter Verteilungsschlüssel:
-            # 1. Ratio (weniger Aufsichten = besser)
-            # 2. Wochenverteilung (weniger diese Woche = besser)  
-            # 3. Absolute Anzahl
-            # 4. Zufallsfaktor
-            key = (ratio, week_assignments, assigned, random_bias[t.id])
+            key = (ratio, assigned, random_bias[t.id])
             if best_key is None or key < best_key:
                 best_key = key
                 best_t = t
