@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.requests import Request
@@ -233,8 +233,8 @@ async def bulk_quota(target_duties: int = Form(...), ids: List[int] = Form([]), 
 
 @router.post("/teachers/set-attendance")
 async def set_attendance(
+    request: Request,
     teacher_id: int = Form(...), 
-    attendance_days: Optional[List[str]] = Form(None), 
     db: Session = Depends(get_db)
 ):
     """Setzt die Anwesenheitstage (Wochentage) für eine Lehrkraft"""
@@ -244,9 +244,9 @@ async def set_attendance(
         response.set_cookie("flash", "Lehrkraft nicht gefunden", max_age=5)
         return response
     
-    # Setze Anwesenheitstage basierend auf Checkboxen
-    if attendance_days is None:
-        attendance_days = []
+    # Hole alle attendance_days aus dem Raw-Form-Data
+    form_data = await request.form()
+    attendance_days = form_data.getlist("attendance_days")
     
     teacher.set_attendance_days(attendance_days)
     db.commit()
@@ -259,11 +259,15 @@ async def set_attendance(
 
 @router.post("/teachers/bulk-attendance")
 async def bulk_set_attendance(
-    ids: List[int] = Form([]),
-    bulk_days: List[str] = Form([]),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Setzt Anwesenheitstage für mehrere Lehrkräfte gleichzeitig"""
+    # Hole alle Werte aus dem Raw-Form-Data
+    form_data = await request.form()
+    ids = [int(id_str) for id_str in form_data.getlist("ids")]
+    bulk_days = form_data.getlist("bulk_days")
+    
     if not ids:
         response = RedirectResponse(url="/admin/teachers", status_code=303)
         response.set_cookie("flash", "Keine Lehrkräfte ausgewählt", max_age=5)

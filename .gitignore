@@ -36,3 +36,4 @@ vertretungsplan.db
 .coverage
 htmlcov/
 .pytest_cache/
+GPU001.TXT

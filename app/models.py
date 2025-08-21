@@ -58,6 +58,35 @@ class Teacher(Base):
             if day in day_map:
                 self.attendance_days |= (1 << day_map[day])
     
+    def get_attendance_days_display(self) -> str:
+        """Gibt Anwesenheitstage als lesbaren String zurück"""
+        if not self.attendance_days:
+            return "Keine"
+        
+        days = []
+        if self.attendance_days & 1: days.append("Mo")
+        if self.attendance_days & 2: days.append("Di")
+        if self.attendance_days & 4: days.append("Mi")
+        if self.attendance_days & 8: days.append("Do")
+        if self.attendance_days & 16: days.append("Fr")
+        
+        if len(days) == 5:
+            return "Mo-Fr"
+        elif len(days) == 0:
+            return "Keine"
+        else:
+            return " ".join(days)
+    
+    def get_attendance_days_list(self) -> list:
+        """Gibt Liste der Anwesenheitstage zurück ['Mo', 'Di', ...]"""
+        days = []
+        if self.attendance_days & 1: days.append("Mo")
+        if self.attendance_days & 2: days.append("Di")
+        if self.attendance_days & 4: days.append("Mi")
+        if self.attendance_days & 8: days.append("Do")
+        if self.attendance_days & 16: days.append("Fr")
+        return days
+    
 
 
 

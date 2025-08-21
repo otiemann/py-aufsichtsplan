@@ -119,9 +119,8 @@ def generate_assignments(
             .all()
         )
 
-        # Kandidaten unter Soll
-        candidates_under: List[Tuple[Teacher, int]] = []
-        candidates_all: List[Tuple[Teacher, int]] = []
+        # ALLE verfügbaren Kandidaten sammeln (keine Trennung nach Präferenz)
+        all_candidates: List[Tuple[Teacher, int]] = []
         for t, target in eligible:
             if t.id in already:
                 continue
@@ -133,32 +132,115 @@ def generate_assignments(
             assigned = existing_counts.get(t.id, 0)
             if assigned >= target:
                 continue
-            tuple_val = (t, target)
-            if t.preferred_floor_id == floor_id:
-                candidates_under.append(tuple_val)
-            else:
-                candidates_all.append(tuple_val)
+            
+            all_candidates.append((t, target))
 
-        pool = candidates_under if candidates_under else candidates_all
-        if not pool:
+        if not all_candidates:
             return None
 
-        best_t = None
-        best_key = None
-        for t, target in pool:
+        # Erstelle zwei separate Pools: ohne und mit Aufsichten heute
+        candidates_no_duties_today = []
+        candidates_with_duties_today = []
+        
+        for t, target in all_candidates:
             assigned = existing_counts.get(t.id, 0)
-            ratio = assigned / max(target, 1)
-            key = (ratio, assigned, random_bias[t.id])
-            if best_key is None or key < best_key:
-                best_key = key
-                best_t = t
-        return best_t
+            
+            # Hole alle Pausen dieser Lehrkraft an diesem Tag
+            existing_breaks = [
+                break_idx for (break_idx,) in 
+                db.query(DutySlot.break_index)
+                .join(Assignment, Assignment.duty_slot_id == DutySlot.id)
+                .filter(Assignment.teacher_id == t.id, DutySlot.date == d)
+                .all()
+            ]
+            
+            # AUSSCHLUSSKRITERIUM: Keine aufeinanderfolgenden Pausen erlauben
+            has_consecutive = False
+            for existing_break in existing_breaks:
+                if abs(existing_break - break_index) == 1:
+                    has_consecutive = True
+                    break
+            
+            if has_consecutive:
+                continue  # Diese Lehrkraft komplett ausschließen
+            
+            # AUSSCHLUSSKRITERIUM: Maximal 2 Aufsichten pro Tag
+            duties_today = len(existing_breaks)
+            if duties_today >= 2:
+                continue  # Diese Lehrkraft komplett ausschließen
+            
+            # Trenne nach Aufsichten heute
+            if duties_today == 0:
+                candidates_no_duties_today.append((t, target, assigned, duties_today))
+            else:
+                candidates_with_duties_today.append((t, target, assigned, duties_today))
+        
+        # PRIORITÄT 1: Lehrkräfte ohne Aufsichten heute
+        # PRIORITÄT 2: Lehrkräfte mit bereits einer Aufsicht heute (nur als Notfall)
+        priority_pools = [candidates_no_duties_today, candidates_with_duties_today]
+        
+        for candidates in priority_pools:
+            if not candidates:
+                continue
+                
+            best_t = None
+            best_key = None
+            
+            for t, target, assigned, duties_today in candidates:
+                # Basis-Bewertung
+                ratio = assigned / max(target, 1)
+                
+                # Sehr hohe Strafe für mehrere Aufsichten am gleichen Tag
+                same_day_penalty = duties_today * 5.0  # Drastisch erhöht
+                
+                # Berechne wie viele Tage diese Lehrkraft bereits Aufsichten hat
+                days_with_duties = (
+                    db.query(DutySlot.date)
+                    .join(Assignment, Assignment.duty_slot_id == DutySlot.id)
+                    .filter(Assignment.teacher_id == t.id)
+                    .filter(DutySlot.date >= start_date, DutySlot.date <= end_date)
+                    .distinct()
+                    .count()
+                )
+                
+                # Berechne verfügbare Tage für diese Lehrkraft
+                available_days = sum(1 for i in range(5) if t.is_available_on_weekday(i))
+                
+                # Kombinierte Bewertung: Tagesverteilung + Stockwerk-Präferenz
+                day_distribution_factor = days_with_duties / max(available_days, 1)
+                
+                # Stockwerk-Präferenz als Bonus/Malus
+                has_floor_preference = (t.preferred_floor_id == floor_id)
+                floor_preference_bonus = -0.3 if has_floor_preference else 0.0
+                
+                # Kombiniere Tagesverteilung mit Stockwerk-Präferenz
+                combined_distribution_score = day_distribution_factor + floor_preference_bonus
+                
+                key = (
+                    combined_distribution_score, # 1. Tagesverteilung + Stockwerk-Präferenz
+                    ratio + same_day_penalty,    # 2. Soll-Ist-Verhältnis + Strafe
+                    assigned,                    # 3. Absolute Anzahl
+                    random_bias[t.id]           # 4. Zufalls-Bias
+                )
+                
+                if best_key is None or key < best_key:
+                    best_key = key
+                    best_t = t
+            
+            if best_t is not None:
+                return best_t
+        
+        return None
 
     floor_required: Dict[int, int] = {}
     for f in db.query(Floor).all():
         floor_required[f.id] = max(1, f.required_per_break or 1)
 
-    for slot in slots:
+    # Einfache Sortierung: Chronologisch nach Datum und Pause
+    # Alle Slots werden gleichberechtigt behandelt
+    sorted_slots = sorted(slots, key=lambda slot: (slot.date, slot.break_index, slot.floor_id))
+    
+    for slot in sorted_slots:
         current_assigned = (
             db.query(Assignment)
             .filter(Assignment.duty_slot_id == slot.id)

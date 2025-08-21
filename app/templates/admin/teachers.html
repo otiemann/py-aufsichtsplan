@@ -79,13 +79,13 @@
                     </div>
                     <div id="attendance_edit_{{ t.id }}" style="display:none;">
                         <form method="post" action="/admin/teachers/set-attendance" style="margin: 0;">
-                            <input type="hidden" name="teacher_id" value="{{ t.id }}"> {% set days = t.attendance_days or 31 %}
+                            <input type="hidden" name="teacher_id" value="{{ t.id }}"> {% set active_days = t.get_attendance_days_list() %}
                             <div style="display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 4px;">
-                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Mo" {% if days & 1 %}checked{% endif %}> Mo</label>
-                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Di" {% if days & 2 %}checked{% endif %}> Di</label>
-                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Mi" {% if days & 4 %}checked{% endif %}> Mi</label>
-                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Do" {% if days & 8 %}checked{% endif %}> Do</label>
-                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Fr" {% if days & 16 %}checked{% endif %}> Fr</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Mo" {% if "Mo" in active_days %}checked{% endif %}> Mo</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Di" {% if "Di" in active_days %}checked{% endif %}> Di</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Mi" {% if "Mi" in active_days %}checked{% endif %}> Mi</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Do" {% if "Do" in active_days %}checked{% endif %}> Do</label>
+                                <label style="font-size: 0.7em;"><input type="checkbox" name="attendance_days" value="Fr" {% if "Fr" in active_days %}checked{% endif %}> Fr</label>
                             </div>
                             <button type="submit" style="font-size: 0.8em;">💾</button>
                             <button type="button" onclick="hideAttendanceEdit({{ t.id }}); return false;" style="font-size: 0.8em;">❌</button>

@@ -1,14 +1,17 @@
 {% extends "base.html" %} {% block content %}
 <h2>Plan generieren und anzeigen</h2>
 
-<form method="post" action="/plan/generate" style="margin-bottom:2rem;">
-    <button type="submit" style="padding: 0.8rem 1.5rem; font-size: 1.1rem; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer;">
-        Plan erzeugen
-    </button>
-    <div style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;">
-        Generiert automatisch Aufsichtspläne für Montag bis Freitag mit 4 Pausen pro Tag
-    </div>
-</form>
+<div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #27ae60;">
+    <form method="post" action="/plan/generate" style="margin: 0;">
+        <button type="submit" style="padding: 1rem 2rem; font-size: 1.2rem; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            🔄 Plan erzeugen
+        </button>
+        <div style="margin-top: 0.8rem; color: #666; font-size: 0.95rem;">
+            Generiert automatisch Aufsichtspläne für Montag bis Freitag mit 4 Pausen pro Tag<br>
+            <strong>Hinweis:</strong> Erzeugt einen neuen Plan und überschreibt den aktuellen Plan.
+        </div>
+    </form>
+</div>
 
 <h3>Pausenaufsichtsplan</h3>
 {% include "plan/week_grid.html" %}
