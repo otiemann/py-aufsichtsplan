@@ -29,8 +29,14 @@ jobs:
         if (Test-Path dist) { Remove-Item -Recurse -Force dist }
         if (Test-Path build) { Remove-Item -Recurse -Force build }
         
-        # Use spec file to ensure only EXE is created
-        pyinstaller Aufsichtsplan.spec
+        # Build EXE directly with explicit onefile flag
+        pyinstaller --onefile --noconsole `
+          --name Aufsichtsplan `
+          --add-data "app/templates;app/templates" `
+          --add-data "app/static;app/static" `
+          --distpath dist `
+          --workpath build `
+          start.py
         
         # Debug: Show what was actually created
         Write-Host "=== Build Results ==="
