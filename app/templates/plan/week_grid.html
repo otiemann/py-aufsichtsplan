@@ -64,12 +64,21 @@
     let draggedTeacher = null;
 
     function dragStart(event) {
+        console.log('Drag Start Event:', event.target);
+
         draggedTeacher = {
             teacher: event.target.dataset.teacher,
             floor: event.target.dataset.floor,
             sourceDay: event.target.dataset.day,
             sourceBreak: event.target.dataset.break
         };
+
+        console.log('Dragged Teacher Data:', draggedTeacher);
+
+        if (!draggedTeacher.teacher || !draggedTeacher.floor) {
+            console.error('Unvollständige Teacher-Daten beim Drag Start:', draggedTeacher);
+            return;
+        }
 
         event.target.style.opacity = '0.5';
         event.target.style.transform = 'scale(0.95)';
@@ -123,6 +132,8 @@
         if (draggedTeacher) {
             const zone = event.currentTarget;
             zone.style.background = '#e8f5e8';
+            zone.style.transform = 'scale(1.02)';
+            zone.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
         }
     }
 
@@ -153,6 +164,9 @@
         if (draggedTeacher) {
             zone.style.background = '#f0f8ff';
             zone.style.border = '2px dashed #2196f3';
+        } else {
+            zone.style.background = '';
+            zone.style.border = '1px solid #ddd';
         }
         zone.style.transform = '';
         zone.style.boxShadow = '';
@@ -160,20 +174,33 @@
 
     function drop(event) {
         event.preventDefault();
+        console.log('Drop Event:', event.currentTarget, draggedTeacher);
 
-        if (!draggedTeacher) return;
+        if (!draggedTeacher) {
+            console.log('Kein draggedTeacher beim Drop');
+            return;
+        }
 
         const targetZone = event.currentTarget;
         const targetDay = targetZone.dataset.day;
         const targetBreak = targetZone.dataset.break;
 
+        console.log('Drop Target:', {
+            targetDay,
+            targetBreak,
+            sourceDay: draggedTeacher.sourceDay,
+            sourceBreak: draggedTeacher.sourceBreak
+        });
+
         // Prüfe, ob es eine andere Position ist
         if (draggedTeacher.sourceDay === targetDay && draggedTeacher.sourceBreak === targetBreak) {
+            console.log('Gleiche Position - Drop abgebrochen');
             resetDragState();
             return; // Gleiche Position
         }
 
         // Direktes Drop ohne Dialog
+        console.log('Führe Direct Drop aus');
         performDirectDrop(targetZone, targetDay, targetBreak, event);
     }
 
@@ -194,17 +221,29 @@
 
         if (currentElement && currentElement.classList.contains('floor-container')) {
             targetFloorContainer = currentElement;
-            targetFloorName = currentElement.querySelector('strong').textContent.replace(':', '').trim();
+            const strongElement = currentElement.querySelector('strong');
+            if (strongElement) {
+                targetFloorName = strongElement.textContent.replace(':', '').trim();
+            }
         } else {
             // Fallback: Nehme das erste verfügbare Stockwerk in der Zielzone
             const firstFloorContainer = targetZone.querySelector('.floor-container');
             if (firstFloorContainer) {
                 targetFloorContainer = firstFloorContainer;
-                targetFloorName = firstFloorContainer.querySelector('strong').textContent.replace(':', '').trim();
+                const strongElement = firstFloorContainer.querySelector('strong');
+                if (strongElement) {
+                    targetFloorName = strongElement.textContent.replace(':', '').trim();
+                }
             }
         }
 
         if (!targetFloorContainer || !targetFloorName) {
+            console.error('Drag-Drop Error: Kein gültiges Ziel-Stockwerk gefunden!', {
+                targetFloorContainer,
+                targetFloorName,
+                elementUnderMouse,
+                targetZone
+            });
             showErrorMessage('Kein gültiges Ziel-Stockwerk gefunden!');
             resetDragState();
             return;
@@ -459,6 +498,44 @@
             e.returnValue = '';
         }
     });
+
+    // Initialisierung der Drag-and-Drop-Funktionalität
+    function initializeDragAndDrop() {
+        console.log('Initialisiere Drag-and-Drop-Funktionalität');
+
+        // Prüfe alle Teacher-Chips
+        const teacherChips = document.querySelectorAll('.teacher-chip');
+        console.log('Gefundene Teacher-Chips:', teacherChips.length);
+
+        teacherChips.forEach((chip, index) => {
+            if (!chip.draggable) {
+                console.warn(`Teacher-Chip ${index} ist nicht draggable:`, chip);
+            }
+            if (!chip.ondragstart) {
+                console.warn(`Teacher-Chip ${index} hat keinen dragstart Handler:`, chip);
+            }
+        });
+
+        // Prüfe alle Drop-Zonen
+        const dropZones = document.querySelectorAll('.drop-zone');
+        console.log('Gefundene Drop-Zonen:', dropZones.length);
+
+        dropZones.forEach((zone, index) => {
+            if (!zone.ondrop) {
+                console.warn(`Drop-Zone ${index} hat keinen drop Handler:`, zone);
+            }
+        });
+    }
+
+    // Initialisiere nach dem Laden
+    document.addEventListener('DOMContentLoaded', initializeDragAndDrop);
+
+    // Fallback für den Fall, dass DOMContentLoaded bereits gefeuert wurde
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeDragAndDrop);
+    } else {
+        initializeDragAndDrop();
+    }
 
     // Hover-Effekte für bessere UX
     document.addEventListener('mouseover', function(e) {

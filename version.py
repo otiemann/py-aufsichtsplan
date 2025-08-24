@@ -2,8 +2,8 @@
 Version management for py-aufsichtsplan
 """
 
-__version__ = "1.0.0"
-__build_date__ = "2024-12-19"
+__version__ = "0.1.8-beta"
+__build_date__ = "2025-08-24"
 
 def get_version_info():
     """Returns version information as dictionary"""
