@@ -13,7 +13,7 @@ Professionelle Software für die Pausenaufsichtsplanung an Schulen.
 
 ## 💾 Download
 
-[**→ Neueste Version herunterladen**](https://github.com/olivertiemann/py-aufsichtsplan/releases/latest)
+[**→ Neueste Version herunterladen**](https://github.com/otiemann/py-aufsichtsplan/releases/latest)
 
 ## 📦 Installation
 
@@ -50,7 +50,7 @@ Professionelle Software für die Pausenaufsichtsplanung an Schulen.
 ## 🐛 Problem melden
 
 Haben Sie einen Fehler gefunden oder einen Verbesserungsvorschlag?
-[Erstellen Sie ein Issue auf GitHub](https://github.com/olivertiemann/py-aufsichtsplan/issues)
+[Erstellen Sie ein Issue auf GitHub](https://github.com/otiemann/py-aufsichtsplan/issues)
 
 ## 📄 Lizenz
 

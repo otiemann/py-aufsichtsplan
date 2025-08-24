@@ -192,15 +192,46 @@
             sourceBreak: draggedTeacher.sourceBreak
         });
 
-        // Prüfe, ob es eine andere Position ist
-        if (draggedTeacher.sourceDay === targetDay && draggedTeacher.sourceBreak === targetBreak) {
-            console.log('Gleiche Position - Drop abgebrochen');
+        // Bestimme zunächst das Ziel-Stockwerk für den Vergleich
+        let targetFloorName = null;
+        const elementUnderMouse = document.elementFromPoint(event.clientX, event.clientY);
+        let currentElement = elementUnderMouse;
+        while (currentElement && !currentElement.classList.contains('floor-container')) {
+            currentElement = currentElement.parentElement;
+            if (currentElement === targetZone) break;
+        }
+
+        if (currentElement && currentElement.classList.contains('floor-container')) {
+            const strongElement = currentElement.querySelector('strong');
+            if (strongElement) {
+                targetFloorName = strongElement.textContent.replace(':', '').trim();
+            }
+        } else {
+            // Fallback: Nehme das erste verfügbare Stockwerk in der Zielzone
+            const firstFloorContainer = targetZone.querySelector('.floor-container');
+            if (firstFloorContainer) {
+                const strongElement = firstFloorContainer.querySelector('strong');
+                if (strongElement) {
+                    targetFloorName = strongElement.textContent.replace(':', '').trim();
+                }
+            }
+        }
+
+        // Prüfe, ob es WIRKLICH die gleiche Position ist (Tag, Pause UND Stockwerk)
+        if (draggedTeacher.sourceDay === targetDay &&
+            draggedTeacher.sourceBreak === targetBreak &&
+            draggedTeacher.floor === targetFloorName) {
+            console.log('Exakt gleiche Position (Tag, Pause, Stockwerk) - Drop abgebrochen');
             resetDragState();
-            return; // Gleiche Position
+            return; // Exakt gleiche Position
         }
 
         // Direktes Drop ohne Dialog
-        console.log('Führe Direct Drop aus');
+        console.log('Führe Direct Drop aus - Ziel:', {
+            targetDay,
+            targetBreak,
+            targetFloorName
+        });
         performDirectDrop(targetZone, targetDay, targetBreak, event);
     }
 

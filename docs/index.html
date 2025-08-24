@@ -182,7 +182,7 @@
             <div class="download-section">
                 <h2>💾 Download</h2>
                 <p style="margin-bottom: 1.5rem;">Laden Sie die neueste Version für Windows herunter:</p>
-                <a href="https://github.com/olivertiemann/py-aufsichtsplan/releases" class="download-btn" id="download-btn">
+                <a href="https://github.com/otiemann/py-aufsichtsplan/releases" class="download-btn" id="download-btn">
                     🖥️ Windows Download (EXE)
                 </a>
                 <div class="version-info">
@@ -247,7 +247,7 @@
             </div>
 
             <div class="github-link">
-                <a href="https://github.com/olivertiemann/py-aufsichtsplan" target="_blank">
+                <a href="https://github.com/otiemann/py-aufsichtsplan" target="_blank">
                     📂 Projekt auf GitHub ansehen
                 </a>
             </div>
@@ -258,7 +258,7 @@
         // Aktuelle Version von GitHub API laden
         async function loadVersionInfo() {
             try {
-                const response = await fetch('https://api.github.com/repos/olivertiemann/py-aufsichtsplan/releases/latest');
+                const response = await fetch('https://api.github.com/repos/otiemann/py-aufsichtsplan/releases/latest');
                 const data = await response.json();
 
                 document.getElementById('current-version').textContent = data.tag_name || 'v1.0.0';
@@ -276,7 +276,7 @@
                     downloadBtn.textContent = '🖥️ Windows Download (EXE)';
                 } else {
                     // Fallback: Link zu Releases-Seite wenn kein Asset gefunden
-                    downloadBtn.href = 'https://github.com/olivertiemann/py-aufsichtsplan/releases';
+                    downloadBtn.href = 'https://github.com/otiemann/py-aufsichtsplan/releases';
                     downloadBtn.textContent = '📂 Zu den Releases';
                 }
             } catch (error) {
