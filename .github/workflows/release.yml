@@ -29,12 +29,8 @@ jobs:
         if (Test-Path dist) { Remove-Item -Recurse -Force dist }
         if (Test-Path build) { Remove-Item -Recurse -Force build }
         
-        # Build with PyInstaller (same as build_windows.bat)
-        pyinstaller --noconsole --onefile `
-          --name Aufsichtsplan `
-          --add-data "app/templates;app/templates" `
-          --add-data "app/static;app/static" `
-          start.py
+        # Use spec file to ensure only EXE is created
+        pyinstaller Aufsichtsplan.spec
       shell: pwsh
       
     - name: Create version info

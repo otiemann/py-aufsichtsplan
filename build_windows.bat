@@ -16,12 +16,8 @@ REM Clean dist
 if exist dist rmdir /s /q dist
 if exist build rmdir /s /q build
 
-REM Bundle with templates and static
-pyinstaller --noconsole --onefile ^
-  --name Aufsichtsplan ^
-  --add-data "app\templates;app\templates" ^
-  --add-data "app\static;app\static" ^
-  start.py
+REM Use spec file for consistent builds
+pyinstaller Aufsichtsplan.spec
 
 echo Build abgeschlossen. EXE unter dist\Aufsichtsplan.exe
 endlocal
