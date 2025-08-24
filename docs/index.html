@@ -255,25 +255,47 @@
     </div>
 
     <script>
-        // Aktuelle Version von GitHub API laden
+        // Aktuelle Version von GitHub API laden (inkl. Prereleases)
         async function loadVersionInfo() {
             try {
-                const response = await fetch('https://api.github.com/repos/otiemann/py-aufsichtsplan/releases/latest');
-                const data = await response.json();
+                // Alle Releases laden (auch Prereleases) und das neueste nehmen
+                const response = await fetch('https://api.github.com/repos/otiemann/py-aufsichtsplan/releases');
+                const releases = await response.json();
+                
+                if (!releases || releases.length === 0) {
+                    throw new Error('Keine Releases gefunden');
+                }
+                
+                // Das erste Release ist das neueste (GitHub sortiert automatisch)
+                const latestRelease = releases[0];
 
-                document.getElementById('current-version').textContent = data.tag_name || 'v1.0.0';
+                const version = latestRelease.tag_name || 'v1.0.0';
+                const versionElement = document.getElementById('current-version');
+                
+                // Beta-Badge hinzufügen wenn es sich um eine Beta-Version handelt
+                if (version.includes('beta')) {
+                    versionElement.innerHTML = `${version} <span style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">BETA</span>`;
+                } else {
+                    versionElement.textContent = version;
+                }
 
-                if (data.published_at) {
-                    const date = new Date(data.published_at);
+                if (latestRelease.published_at) {
+                    const date = new Date(latestRelease.published_at);
                     document.getElementById('last-updated').textContent = date.toLocaleDateString('de-DE');
                 }
 
                 // Download-Link aktualisieren
                 const downloadBtn = document.getElementById('download-btn');
-                const exeAsset = data.assets?.find(asset => asset.name === 'Aufsichtsplan.exe');
+                const exeAsset = latestRelease.assets?.find(asset => asset.name === 'Aufsichtsplan.exe');
                 if (exeAsset) {
                     downloadBtn.href = exeAsset.browser_download_url;
                     downloadBtn.textContent = '🖥️ Windows Download (EXE)';
+                    
+                    // Dateigröße anzeigen wenn verfügbar
+                    if (exeAsset.size) {
+                        const sizeMB = (exeAsset.size / 1024 / 1024).toFixed(1);
+                        downloadBtn.textContent += ` (${sizeMB} MB)`;
+                    }
                 } else {
                     // Fallback: Link zu Releases-Seite wenn kein Asset gefunden
                     downloadBtn.href = 'https://github.com/otiemann/py-aufsichtsplan/releases';
@@ -283,6 +305,11 @@
                 console.error('Fehler beim Laden der Versionsinformationen:', error);
                 document.getElementById('current-version').textContent = 'v1.0.0';
                 document.getElementById('last-updated').textContent = 'Unbekannt';
+                
+                // Fallback Download-Link
+                const downloadBtn = document.getElementById('download-btn');
+                downloadBtn.href = 'https://github.com/otiemann/py-aufsichtsplan/releases';
+                downloadBtn.textContent = '📂 Zu den Releases';
             }
         }
 
