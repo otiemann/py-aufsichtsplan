@@ -1,8 +1,6 @@
 {% extends "base.html" %} {% block content %}
 <h2>Lehrkräfte</h2>
 
-<p><a href="/admin">CSV hochladen</a></p>
-
 <form method="post" action="/admin/teachers/bulk">
     <div style="margin: .5rem 0;">
         <button type="submit" name="action" value="set_exempt">Als „keine Aufsicht" markieren</button>
