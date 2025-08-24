@@ -37,14 +37,26 @@ jobs:
         if (Test-Path dist) { Remove-Item -Recurse -Force dist }
         if (Test-Path build) { Remove-Item -Recurse -Force build }
         
-        # Build EXE directly with explicit onefile flag
-        pyinstaller --onefile --noconsole `
-          --name Aufsichtsplan `
-          --add-data "app/templates;app/templates" `
-          --add-data "app/static;app/static" `
-          --distpath dist `
-          --workpath build `
-          start.py
+        # Build EXE mit verbesserter Spec-Datei
+        if (Test-Path "Aufsichtsplan-fixed.spec") {
+          Write-Host "Using improved spec file..."
+          pyinstaller Aufsichtsplan-fixed.spec --distpath dist --workpath build
+        } else {
+          Write-Host "Using fallback build method..."
+          pyinstaller --onefile --noconsole `
+            --name Aufsichtsplan `
+            --add-data "app/templates;app/templates" `
+            --add-data "app/static;app/static" `
+            --hidden-import uvicorn.workers.uvicorn_worker `
+            --hidden-import uvicorn.lifespan.on `
+            --hidden-import uvicorn.lifespan.off `
+            --hidden-import uvicorn.protocols.websockets.auto `
+            --hidden-import uvicorn.protocols.http.auto `
+            --hidden-import uvicorn.loops.auto `
+            --distpath dist `
+            --workpath build `
+            start.py
+        }
         
         # Debug: Show what was actually created
         Write-Host "=== Build Results ==="
