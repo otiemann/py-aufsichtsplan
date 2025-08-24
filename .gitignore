@@ -37,3 +37,5 @@ vertretungsplan.db
 htmlcov/
 .pytest_cache/
 GPU001.TXT
+activate_py313.sh
+GPU009.txt
