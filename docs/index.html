@@ -182,7 +182,7 @@
             <div class="download-section">
                 <h2>💾 Download</h2>
                 <p style="margin-bottom: 1.5rem;">Laden Sie die neueste Version für Windows herunter:</p>
-                <a href="https://github.com/olivertiemann/py-aufsichtsplan/releases/latest/download/Aufsichtsplan.exe" class="download-btn" id="download-btn">
+                <a href="https://github.com/olivertiemann/py-aufsichtsplan/releases" class="download-btn" id="download-btn">
                     🖥️ Windows Download (EXE)
                 </a>
                 <div class="version-info">
@@ -270,9 +270,14 @@
 
                 // Download-Link aktualisieren
                 const downloadBtn = document.getElementById('download-btn');
-                const exeAsset = data.assets ? .find(asset => asset.name === 'Aufsichtsplan.exe');
+                const exeAsset = data.assets?.find(asset => asset.name === 'Aufsichtsplan.exe');
                 if (exeAsset) {
                     downloadBtn.href = exeAsset.browser_download_url;
+                    downloadBtn.textContent = '🖥️ Windows Download (EXE)';
+                } else {
+                    // Fallback: Link zu Releases-Seite wenn kein Asset gefunden
+                    downloadBtn.href = 'https://github.com/olivertiemann/py-aufsichtsplan/releases';
+                    downloadBtn.textContent = '📂 Zu den Releases';
                 }
             } catch (error) {
                 console.error('Fehler beim Laden der Versionsinformationen:', error);

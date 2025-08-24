@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'  # Triggert bei Tags wie v1.0.0, v1.2.3, etc.
 
+# Permissions für Release-Erstellung
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -102,12 +107,12 @@ jobs:
       
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ env.VERSION }}
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ env.VERSION }}
         body: |
           ## Aufsichtsplan ${{ env.VERSION }}
           
@@ -124,34 +129,9 @@ jobs:
           
           **Vollständige Änderungen**: [${{ github.event.before }}...${{ github.sha }}](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }})
         draft: false
-        prerelease: false
-        
-    - name: Upload EXE
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/Aufsichtsplan.exe
-        asset_name: Aufsichtsplan.exe
-        asset_content_type: application/octet-stream
-        
-    - name: Upload Checksums
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./checksums.txt
-        asset_name: checksums.txt
-        asset_content_type: text/plain
-        
-    - name: Upload Version Info
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./version.json
-        asset_name: version.json
-        asset_content_type: application/json
+        prerelease: true
+        files: |
+          dist/Aufsichtsplan.exe
+          checksums.txt
+          version.json
+
