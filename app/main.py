@@ -92,25 +92,6 @@ async def test_database():
         })
 
 
-@app.get("/admin/database")
-async def database_admin(request: Request):
-    """Zeigt die Datenbank-Verwaltungsseite"""
-    try:
-        db_path = get_db_file_path()
-        db_exists = os.path.exists(db_path)
-        db_size = os.path.getsize(db_path) if db_exists else 0
-        db_modified = datetime.fromtimestamp(os.path.getmtime(db_path)) if db_exists else None
-        
-        return templates.TemplateResponse("admin/database.html", {
-            "request": request,
-            "db_path": db_path,
-            "db_exists": db_exists,
-            "db_size": f"{db_size / 1024:.1f} KB" if db_size > 0 else "0 KB",
-            "db_modified": db_modified.strftime("%d.%m.%Y %H:%M:%S") if db_modified else "Unbekannt"
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Laden der Datenbank-Info: {str(e)}")
-
 
 def get_db_file_path() -> str:
     """Ermittelt den tatsächlichen Pfad zur SQLite-Datenbank"""

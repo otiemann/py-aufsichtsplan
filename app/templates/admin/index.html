@@ -102,6 +102,45 @@
     </div>
 </div>
 
+<!-- Datenbank-Verwaltung -->
+<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #007bff;">
+    <h3>💾 Datenbank-Verwaltung</h3>
+    <p>Sichern Sie Ihre Daten oder stellen Sie sie aus einem Backup wieder her.</p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+        <!-- Backup -->
+        <div style="background: #e8f5e8; padding: 1rem; border-radius: 6px; border-left: 3px solid #27ae60;">
+            <h4 style="margin-top: 0; color: #27ae60;">📥 Backup erstellen</h4>
+            <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #555;">
+                Laden Sie eine Sicherungskopie Ihrer Datenbank herunter.
+            </p>
+            <a href="/backup/download" style="display: inline-block; padding: 0.6rem 1rem; background: #27ae60; color: white; text-decoration: none; border-radius: 4px; font-size: 0.9rem;">
+                📥 Backup herunterladen
+            </a>
+        </div>
+
+        <!-- Restore -->
+        <div style="background: #fff3cd; padding: 1rem; border-radius: 6px; border-left: 3px solid #ffc107;">
+            <h4 style="margin-top: 0; color: #856404;">📤 Backup wiederherstellen</h4>
+            <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #555;">
+                Stellen Sie Ihre Datenbank aus einer .db-Datei wieder her.
+            </p>
+            <form id="restoreForm" enctype="multipart/form-data" style="margin: 0;">
+                <input type="file" id="backupFile" name="file" accept=".db" required style="width: 100%; padding: 0.4rem; border: 1px solid #ffc107; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.85rem;">
+                <button type="button" onclick="restoreDatabase()" style="padding: 0.6rem 1rem; background: #ffc107; color: #856404; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">
+                    📤 Wiederherstellen
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <div style="margin-top: 1rem; padding: 0.8rem; background: #f8d7da; border-radius: 4px; border-left: 3px solid #dc3545;">
+        <small style="color: #721c24;">
+            <strong>⚠️ Hinweis:</strong> Bei der Wiederherstellung gehen alle aktuellen Daten verloren! Erstellen Sie vorher ein Backup.
+        </small>
+    </div>
+</div>
+
 <div style="margin-top: 2rem;">
     <a href="/admin/teachers" style="text-decoration: none; padding: 0.8rem 1.5rem; background: #6c757d; color: white; border-radius: 5px;">👥 Lehrkräfte verwalten</a>
 </div>
@@ -184,6 +223,63 @@
             updateInfo.style.display = 'block';
             button.disabled = false;
             button.textContent = 'Updates prüfen';
+        }
+    }
+
+    // Datenbank-Restore Funktionalität
+    async function restoreDatabase() {
+        const fileInput = document.getElementById('backupFile');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert('❌ Bitte wählen Sie eine Backup-Datei aus.');
+            return;
+        }
+
+        if (!file.name.endsWith('.db')) {
+            alert('❌ Bitte wählen Sie eine gültige .db-Datei aus.');
+            return;
+        }
+
+        const confirmed = confirm(
+            '⚠️ ACHTUNG: Diese Aktion überschreibt alle aktuellen Daten!\n\n' +
+            'Alle Lehrkräfte, Stockwerke und Aufsichtspläne werden durch die Daten aus der Backup-Datei ersetzt.\n\n' +
+            'Möchten Sie wirklich fortfahren?'
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Button deaktivieren und Loading-Status anzeigen
+        const button = event.target;
+        const originalText = button.innerHTML;
+        button.innerHTML = '⏳ Wiederherstellen...';
+        button.disabled = true;
+
+        try {
+            const response = await fetch('/backup/restore', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert('✅ ' + result.message + '\n\nDie Seite wird neu geladen...');
+                window.location.reload();
+            } else {
+                throw new Error(result.detail || 'Unbekannter Fehler');
+            }
+        } catch (error) {
+            alert('❌ Fehler beim Wiederherstellen: ' + error.message);
+
+            // Button wieder aktivieren
+            button.innerHTML = originalText;
+            button.disabled = false;
         }
     }
 </script>

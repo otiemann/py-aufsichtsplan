@@ -31,7 +31,7 @@
         flex-direction: column;
         align-items: center;
         padding: 2rem;
-        background: #3498db;
+        background: #e74c3c;
         color: white;
         text-decoration: none;
         border-radius: 10px;
@@ -40,7 +40,7 @@
     }
     
     .home-button:hover {
-        background: #2980b9;
+        background: #c0392b;
         transform: translateY(-2px);
         box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
     }
@@ -61,20 +61,28 @@
         opacity: 0.9;
     }
     
-    .home-button.secondary {
-        background: #95a5a6;
+    .home-button.floors {
+        background: #f39c12;
     }
     
-    .home-button.secondary:hover {
-        background: #7f8c8d;
+    .home-button.floors:hover {
+        background: #e67e22;
     }
     
-    .home-button.primary {
+    .home-button.plan {
         background: #27ae60;
     }
     
-    .home-button.primary:hover {
+    .home-button.plan:hover {
         background: #229954;
+    }
+    
+    .home-button.start {
+        background: #3498db;
+    }
+    
+    .home-button.start:hover {
+        background: #2980b9;
     }
     
     .home-info {
@@ -114,7 +122,7 @@
     <p class="home-subtitle">Einfache Planung und Verwaltung der Pausenaufsichten</p>
 
     <div class="home-buttons">
-        <a href="/plan/generate" class="home-button primary">
+        <a href="/plan/generate" class="home-button plan">
             <div class="home-button-icon">📅</div>
             <div class="home-button-title">Plan erstellen</div>
             <div class="home-button-desc">Pausenaufsichtsplan generieren und anzeigen</div>
@@ -126,27 +134,24 @@
             <div class="home-button-desc">Lehrkräfte verwalten und importieren</div>
         </a>
 
-        <a href="/plan/floors" class="home-button secondary">
+        <a href="/plan/floors" class="home-button floors">
             <div class="home-button-icon">🏢</div>
             <div class="home-button-title">Stockwerke</div>
             <div class="home-button-desc">Stockwerke und Bedarf konfigurieren</div>
-        </a>
-
-        <a href="/admin/database" class="home-button" style="background: #8e44ad;">
-            <div class="home-button-icon">💾</div>
-            <div class="home-button-title">Datenbank</div>
-            <div class="home-button-desc">Backup und Wiederherstellung</div>
         </a>
     </div>
 
     <div class="home-info">
         <h3>Schnellstart:</h3>
         <ul>
-            <li>Zuerst Lehrkräfte über CSV-Datei importieren</li>
+            <li>Zuerst Lehrkräfte über CSV-Datei importieren (Admin → CSV hochladen)</li>
             <li>Stockwerke anlegen und Bedarf festlegen</li>
             <li>Pausenaufsichtsplan generieren</li>
             <li>Plan als PDF exportieren oder ausdrucken</li>
         </ul>
+        <p style="margin-top: 1rem; font-size: 0.9rem; color: #7f8c8d;">
+            <strong>Tipp:</strong> Verwenden Sie den <strong>⚙️ Admin</strong> Button im Menü für erweiterte Funktionen wie CSV-Import, Datenbank-Backup und Update-Prüfung.
+        </p>
     </div>
 </div>
 {% endblock %}
