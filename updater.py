@@ -69,7 +69,9 @@ class AutoUpdater:
     def _is_newer_version(self, latest: str, current: str) -> bool:
         """Vergleicht Versionsnummern (basic semantic versioning)"""
         def version_tuple(v):
-            return tuple(map(int, v.split(".")))
+            # Entferne Beta/Alpha-Suffixe für Vergleich
+            v_clean = v.replace('-beta', '').replace('-alpha', '').replace('-rc', '')
+            return tuple(map(int, v_clean.split(".")))
             
         try:
             return version_tuple(latest) > version_tuple(current)
