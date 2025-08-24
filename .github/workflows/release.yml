@@ -105,14 +105,29 @@ jobs:
         $hash.Hash + "  Aufsichtsplan.exe" | Out-File -FilePath "checksums.txt" -Encoding ASCII
       shell: pwsh
       
+    - name: Debug - List files before release
+      run: |
+        Write-Host "=== Files for Release ==="
+        Write-Host "Current directory: $(Get-Location)"
+        Write-Host "EXE exists: $(Test-Path 'dist/Aufsichtsplan.exe')"
+        Write-Host "Checksums exists: $(Test-Path 'checksums.txt')"
+        Write-Host "Version JSON exists: $(Test-Path 'version.json')"
+        Write-Host "GitHub ref: ${{ github.ref }}"
+        Write-Host "GitHub ref name: ${{ github.ref_name }}"
+        Write-Host "VERSION env: $env:VERSION"
+        
+        if (Test-Path 'dist/Aufsichtsplan.exe') {
+          $exeSize = (Get-Item 'dist/Aufsichtsplan.exe').Length
+          Write-Host "EXE size: $exeSize bytes"
+        }
+      shell: pwsh
+      
     - name: Create Release
       id: create_release
-      uses: softprops/action-gh-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.ref_name }}
-        name: Release ${{ env.VERSION }}
+        name: "Aufsichtsplan ${{ env.VERSION }}"
         body: |
           ## Aufsichtsplan ${{ env.VERSION }}
           
@@ -134,4 +149,6 @@ jobs:
           dist/Aufsichtsplan.exe
           checksums.txt
           version.json
+        fail_on_unmatched_files: false
+        generate_release_notes: false
 
