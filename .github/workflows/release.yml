@@ -31,7 +31,46 @@ jobs:
         
         # Use spec file to ensure only EXE is created
         pyinstaller Aufsichtsplan.spec
+        
+        # Debug: Show what was actually created
+        Write-Host "=== Build Results ==="
+        Write-Host "Contents of dist directory:"
+        if (Test-Path dist) {
+            Get-ChildItem dist -Recurse | Format-Table Name, Length, FullName
+        } else {
+            Write-Host "dist directory does not exist!"
+        }
+        
+        Write-Host "Contents of build directory:"
+        if (Test-Path build) {
+            Get-ChildItem build -Recurse -Directory | Select-Object -First 5 | Format-Table Name, FullName
+        } else {
+            Write-Host "build directory does not exist!"
+        }
+        
+        # Verify only the EXE exists in dist
+        $exeFiles = Get-ChildItem dist -Filter "*.exe" -Recurse
+        Write-Host "Found $($exeFiles.Count) EXE file(s):"
+        $exeFiles | Format-Table Name, Length, Directory
+        
+        # Clean up - remove any unwanted artifacts
+        Write-Host "=== Cleanup ==="
+        Get-ChildItem dist | Where-Object { $_.Name -ne "Aufsichtsplan.exe" } | ForEach-Object {
+            Write-Host "Removing unwanted file/folder: $($_.Name)"
+            Remove-Item $_.FullName -Recurse -Force
+        }
+        
+        # Final verification
+        Write-Host "Final dist contents:"
+        Get-ChildItem dist | Format-Table Name, Length
       shell: pwsh
+      
+    - name: Upload build artifact (single EXE only)
+      uses: actions/upload-artifact@v4
+      with:
+        name: aufsichtsplan-windows
+        path: dist/Aufsichtsplan.exe
+        retention-days: 1
       
     - name: Create version info
       run: |
