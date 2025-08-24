@@ -13,6 +13,19 @@ from .database import Base, engine, SessionLocal, SQLALCHEMY_DATABASE_URL
 
 app = FastAPI(title="Pausenaufsichtsplan")
 
+# Version info import
+try:
+    import sys
+    import os
+    # Add project root to path if needed
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+    from version import get_version_info
+except ImportError:
+    def get_version_info():
+        return {"version": "unknown", "build_date": "unknown"}
+
 RES_DIR_ENV = os.environ.get("APP_RESOURCES_DIR") or os.getcwd()
 
 # Kandidaten für Templates- und Static-Pfade
@@ -174,6 +187,20 @@ async def restore_backup(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Restore-Fehler: {str(e)}")
 
+
+
+@app.get("/api/version")
+async def get_version():
+    """Gibt die aktuelle Version der Anwendung zurück"""
+    try:
+        version_info = get_version_info()
+        return JSONResponse(content=version_info)
+    except Exception as e:
+        return JSONResponse(content={
+            "version": "unknown", 
+            "build_date": "unknown",
+            "error": str(e)
+        })
 
 
 @app.post("/shutdown")

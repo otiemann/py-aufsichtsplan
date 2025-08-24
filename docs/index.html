@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aufsichtsplan - Pausenaufsicht Software</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 3rem;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .main-content {
+            background: white;
+            border-radius: 12px;
+            padding: 3rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 2rem;
+        }
+        
+        .download-section {
+            text-align: center;
+            margin: 3rem 0;
+            padding: 2rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 2px solid #007bff;
+        }
+        
+        .download-btn {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+        }
+        
+        .download-btn:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+        }
+        
+        .feature {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 8px;
+            border-left: 4px solid #28a745;
+        }
+        
+        .feature h3 {
+            color: #28a745;
+            margin-bottom: 1rem;
+        }
+        
+        .installation {
+            background: #e3f2fd;
+            padding: 2rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+        
+        .installation h3 {
+            color: #1976d2;
+            margin-bottom: 1rem;
+        }
+        
+        .installation ol {
+            margin-left: 1.5rem;
+        }
+        
+        .installation li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .version-info {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 2rem 0;
+            text-align: center;
+        }
+        
+        .requirements {
+            background: #f1f3f4;
+            padding: 2rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+        
+        .requirements h3 {
+            color: #5f6368;
+            margin-bottom: 1rem;
+        }
+        
+        .github-link {
+            text-align: center;
+            margin-top: 3rem;
+        }
+        
+        .github-link a {
+            display: inline-block;
+            background: #333;
+            color: white;
+            padding: 1rem 2rem;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: background 0.3s ease;
+        }
+        
+        .github-link a:hover {
+            background: #555;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            .header h1 {
+                font-size: 2rem;
+            }
+            .main-content {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📅 Aufsichtsplan</h1>
+            <p>Professionelle Software für die Pausenaufsichtsplanung an Schulen</p>
+        </div>
+
+        <div class="main-content">
+            <div class="download-section">
+                <h2>💾 Download</h2>
+                <p style="margin-bottom: 1.5rem;">Laden Sie die neueste Version für Windows herunter:</p>
+                <a href="https://github.com/olivertiemann/py-aufsichtsplan/releases/latest/download/Aufsichtsplan.exe" class="download-btn" id="download-btn">
+                    🖥️ Windows Download (EXE)
+                </a>
+                <div class="version-info">
+                    <p><strong>Aktuelle Version:</strong> <span id="current-version">Wird geladen...</span></p>
+                    <p><strong>Letzte Aktualisierung:</strong> <span id="last-updated">Wird geladen...</span></p>
+                </div>
+            </div>
+
+            <div class="features">
+                <div class="feature">
+                    <h3>🎯 Intelligente Planung</h3>
+                    <p>Automatische Erstellung von Aufsichtsplänen basierend auf Lehrkräfte-Verfügbarkeit und Stundenplan-Import.</p>
+                </div>
+
+                <div class="feature">
+                    <h3>📊 CSV Import/Export</h3>
+                    <p>Einfacher Import von Lehrkräftedaten und Export der fertigen Pläne in verschiedene Formate.</p>
+                </div>
+
+                <div class="feature">
+                    <h3>📱 Web-Interface</h3>
+                    <p>Benutzerfreundliche Weboberfläche - läuft lokal auf Ihrem Computer, keine Internetverbindung erforderlich.</p>
+                </div>
+
+                <div class="feature">
+                    <h3>🔄 GPU Integration</h3>
+                    <p>Direkte Integration mit Stundenplan-Software über GPU001.TXT Import für realistische Planungen.</p>
+                </div>
+
+                <div class="feature">
+                    <h3>📋 Flexible Bereiche</h3>
+                    <p>Verwaltung verschiedener Aufsichtsbereiche (Pausenhof, Flure, etc.) mit konfigurierbaren Kontingenten.</p>
+                </div>
+
+                <div class="feature">
+                    <h3>🔧 Einfache Bedienung</h3>
+                    <p>Intuitive Benutzeroberfläche ohne komplizierte Installation oder Konfiguration.</p>
+                </div>
+            </div>
+
+            <div class="installation">
+                <h3>📦 Installation</h3>
+                <ol>
+                    <li>Laden Sie die <code>Aufsichtsplan.exe</code> herunter</li>
+                    <li>Speichern Sie die Datei in einem beliebigen Ordner</li>
+                    <li>Führen Sie die Datei per Doppelklick aus</li>
+                    <li>Die Anwendung öffnet automatisch Ihren Webbrowser</li>
+                    <li>Beginnen Sie mit dem Import Ihrer Lehrkräftedaten</li>
+                </ol>
+                <p><strong>Hinweis:</strong> Windows Defender könnte eine Warnung anzeigen, da die Software nicht digital signiert ist. Sie können die Warnung ignorieren und "Trotzdem ausführen" wählen.</p>
+            </div>
+
+            <div class="requirements">
+                <h3>⚙️ Systemanforderungen</h3>
+                <ul>
+                    <li><strong>Betriebssystem:</strong> Windows 10 oder neuer</li>
+                    <li><strong>Arbeitsspeicher:</strong> Mindestens 512 MB RAM</li>
+                    <li><strong>Festplatte:</strong> 50 MB freier Speicherplatz</li>
+                    <li><strong>Browser:</strong> Moderner Webbrowser (Chrome, Firefox, Edge)</li>
+                    <li><strong>Sonstiges:</strong> Keine Internetverbindung erforderlich</li>
+                </ul>
+            </div>
+
+            <div class="github-link">
+                <a href="https://github.com/olivertiemann/py-aufsichtsplan" target="_blank">
+                    📂 Projekt auf GitHub ansehen
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Aktuelle Version von GitHub API laden
+        async function loadVersionInfo() {
+            try {
+                const response = await fetch('https://api.github.com/repos/olivertiemann/py-aufsichtsplan/releases/latest');
+                const data = await response.json();
+
+                document.getElementById('current-version').textContent = data.tag_name || 'v1.0.0';
+
+                if (data.published_at) {
+                    const date = new Date(data.published_at);
+                    document.getElementById('last-updated').textContent = date.toLocaleDateString('de-DE');
+                }
+
+                // Download-Link aktualisieren
+                const downloadBtn = document.getElementById('download-btn');
+                const exeAsset = data.assets ? .find(asset => asset.name === 'Aufsichtsplan.exe');
+                if (exeAsset) {
+                    downloadBtn.href = exeAsset.browser_download_url;
+                }
+            } catch (error) {
+                console.error('Fehler beim Laden der Versionsinformationen:', error);
+                document.getElementById('current-version').textContent = 'v1.0.0';
+                document.getElementById('last-updated').textContent = 'Unbekannt';
+            }
+        }
+
+        // Beim Laden der Seite
+        document.addEventListener('DOMContentLoaded', loadVersionInfo);
+    </script>
+</body>
+
+</html>

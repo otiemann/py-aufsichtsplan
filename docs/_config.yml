@@ -1,0 +1,23 @@
+# GitHub Pages configuration
+title: "Aufsichtsplan - Pausenaufsicht Software"
+description: "Professionelle Software für die Pausenaufsichtsplanung an Schulen"
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+
+# GitHub Pages specific
+remote_theme: jekyll/minima
+
+# SEO
+lang: de
+author: Oliver Tiemann
+
+# Social
+github_username: olivertiemann
+
+# Exclude from processing
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock

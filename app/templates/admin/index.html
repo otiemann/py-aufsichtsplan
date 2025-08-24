@@ -82,7 +82,84 @@
     {% endif %}
 </div>
 
+<!-- Update Checker -->
+<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #6f42c1;">
+    <h3>🔄 Update-Verwaltung</h3>
+    <p>Prüfen Sie hier nach verfügbaren Updates für die Anwendung.</p>
+
+    <div id="update-status" style="margin-bottom: 1rem; padding: 1rem; border-radius: 5px; background: #e3f2fd;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span>Aktuelle Version:</span>
+            <span id="current-version" style="font-weight: bold;">Wird geladen...</span>
+            <button id="check-updates-btn" onclick="checkForUpdates()" style="padding: 0.5rem 1rem; background: #6f42c1; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                Updates prüfen
+            </button>
+        </div>
+    </div>
+
+    <div id="update-info" style="display: none; margin-top: 1rem; padding: 1rem; border-radius: 5px; background: #d4edda; border: 1px solid #c3e6cb;">
+        <!-- Update-Informationen werden hier angezeigt -->
+    </div>
+</div>
+
 <div style="margin-top: 2rem;">
     <a href="/admin/teachers" style="text-decoration: none; padding: 0.8rem 1.5rem; background: #6c757d; color: white; border-radius: 5px;">👥 Lehrkräfte verwalten</a>
 </div>
+
+<script>
+    // Version beim Laden der Seite abrufen
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCurrentVersion();
+    });
+
+    async function loadCurrentVersion() {
+        try {
+            const response = await fetch('/api/version');
+            const data = await response.json();
+            document.getElementById('current-version').textContent = `v${data.version}` || 'Unbekannt';
+        } catch (error) {
+            document.getElementById('current-version').textContent = 'Fehler beim Laden';
+            console.error('Fehler beim Laden der Version:', error);
+        }
+    }
+
+    async function checkForUpdates() {
+        const button = document.getElementById('check-updates-btn');
+        const updateInfo = document.getElementById('update-info');
+
+        button.disabled = true;
+        button.textContent = 'Prüfe...';
+        updateInfo.style.display = 'none';
+
+        try {
+            // Hier würde normalerweise die Update-API aufgerufen werden
+            // Für jetzt zeigen wir eine Info-Nachricht
+            setTimeout(() => {
+                updateInfo.innerHTML = `
+                <h4 style="margin-top: 0; color: #155724;">ℹ️ Update-Prüfung</h4>
+                <p>Die automatische Update-Prüfung wird implementiert, sobald das erste Release auf GitHub verfügbar ist.</p>
+                <p><strong>Manueller Update-Check:</strong></p>
+                <ol>
+                    <li>Besuchen Sie: <a href="https://github.com/olivertiemann/py-aufsichtsplan/releases" target="_blank">GitHub Releases</a></li>
+                    <li>Laden Sie die neueste <code>Aufsichtsplan.exe</code> herunter</li>
+                    <li>Ersetzen Sie die aktuelle EXE-Datei</li>
+                </ol>
+            `;
+                updateInfo.style.display = 'block';
+                button.disabled = false;
+                button.textContent = 'Updates prüfen';
+            }, 1000);
+
+        } catch (error) {
+            updateInfo.innerHTML = `
+            <div style="color: #721c24; background: #f8d7da; padding: 1rem; border-radius: 5px;">
+                <strong>Fehler:</strong> ${error.message}
+            </div>
+        `;
+            updateInfo.style.display = 'block';
+            button.disabled = false;
+            button.textContent = 'Updates prüfen';
+        }
+    }
+</script>
 {% endblock %}
