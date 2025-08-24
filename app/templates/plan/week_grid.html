@@ -15,7 +15,8 @@
                     {{ day_labels[d_idx] }}
                 </td>
                 {% for b in range(0, breaks_per_day) %}
-                <td class="drop-zone" data-day="{{ d_idx }}" data-break="{{ b }}" style="border: 1px solid #ddd; padding: 8px; vertical-align: top; min-height: 60px; position: relative;" ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="clearDropHighlight(event)">
+                <td class="drop-zone" data-day="{{ d_idx }}" data-break="{{ b }}" style="border: 1px solid #ddd; padding: 8px; vertical-align: top; min-height: 60px; position: relative;" ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="clearDropHighlight(event)"
+                    ondragenter="handleDragEnter(event)">
                     {% for line in grid[d_idx][b] %} {% set outer_loop = loop %} {% for floor_line in [line] %} {% if ':' in floor_line %} {% set floor_name, teachers_str = floor_line.split(':', 1) %}
                     <div class="floor-container" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
                         <strong>{{ floor_name.strip() }}:</strong>
@@ -46,7 +47,8 @@
 <div id="editControls" style="margin-top: 1rem; padding: 1rem; background: #e8f5e8; border-radius: 5px; border-left: 4px solid #27ae60;">
     <h4 style="margin: 0 0 0.5rem 0; color: #27ae60;">✏️ Plan bearbeiten</h4>
     <p style="margin: 0 0 1rem 0; color: #555; font-size: 0.9rem;">
-        Sie können Lehrkräfte per Drag-and-Drop zwischen den Zeitslots verschieben. Ziehen Sie einfach eine Lehrkraft von einem Feld in ein anderes.
+        <strong>🎯 Direktes Drag-and-Drop:</strong><br> • Klicken und ziehen Sie Lehrkräfte zwischen allen Stockwerken und Pausen<br> • Das Ziel-Stockwerk wird automatisch erkannt<br> • Einfach auf das gewünschte Stockwerk ziehen und loslassen<br> • Änderungen
+        werden erst beim Speichern übernommen
     </p>
     <button id="saveChanges" onclick="saveChanges()" style="padding: 0.6rem 1.2rem; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;" disabled>
         💾 Änderungen speichern
@@ -72,16 +74,16 @@
         event.target.style.opacity = '0.5';
         event.target.style.transform = 'scale(0.95)';
 
-        // Highlight alle möglichen Drop-Zonen für das gleiche Stockwerk
+        // Highlight ALLE Drop-Zonen (alle Stockwerke und Pausen)
         document.querySelectorAll('.drop-zone').forEach(zone => {
-            const floorContainers = zone.querySelectorAll('.floor-container');
-            floorContainers.forEach(container => {
-                const floorName = container.querySelector('strong').textContent.replace(':', '');
-                if (floorName === draggedTeacher.floor) {
-                    zone.style.background = '#f0f8ff';
-                    zone.style.border = '2px dashed #2196f3';
-                }
-            });
+            zone.style.background = '#f0f8ff';
+            zone.style.border = '2px dashed #2196f3';
+        });
+
+        // Zusätzliches Highlight für Stockwerk-Container
+        document.querySelectorAll('.floor-container').forEach(container => {
+            container.style.border = '2px dashed #27ae60';
+            container.style.background = '#f8fff8';
         });
     }
 
@@ -94,42 +96,66 @@
             zone.style.background = '';
             zone.style.border = '1px solid #ddd';
         });
+
+        // Reset Stockwerk-Container Highlights
+        document.querySelectorAll('.floor-container').forEach(container => {
+            container.style.border = '3px solid #3498db';
+            container.style.background = '#f8f9fa';
+        });
     }
 
     function allowDrop(event) {
         event.preventDefault();
         if (draggedTeacher) {
-            // Prüfe, ob diese Zone das richtige Stockwerk hat
+            // Alle Zonen sind jetzt gültige Drop-Ziele
             const zone = event.currentTarget;
-            const floorContainers = zone.querySelectorAll('.floor-container');
-            let hasMatchingFloor = false;
+            zone.style.background = '#e8f5e8';
+            zone.style.transform = 'scale(1.02)';
+            zone.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
 
-            floorContainers.forEach(container => {
-                const floorName = container.querySelector('strong').textContent.replace(':', '');
-                if (floorName === draggedTeacher.floor) {
-                    hasMatchingFloor = true;
-                }
-            });
+            // Highlight das Stockwerk unter der Maus
+            highlightTargetFloor(event);
+        }
+    }
 
-            if (hasMatchingFloor) {
-                zone.style.background = '#e8f5e8';
-                zone.style.transform = 'scale(1.02)';
-            }
+    function handleDragEnter(event) {
+        event.preventDefault();
+        if (draggedTeacher) {
+            const zone = event.currentTarget;
+            zone.style.background = '#e8f5e8';
+        }
+    }
+
+    function highlightTargetFloor(event) {
+        // Entferne vorherige Floor-Highlights
+        document.querySelectorAll('.floor-container').forEach(container => {
+            container.style.border = '3px solid #3498db';
+            container.style.background = '#f8f9fa';
+        });
+
+        // Finde das Stockwerk unter dem Mauszeiger
+        const elementUnderMouse = document.elementFromPoint(event.clientX, event.clientY);
+        let currentElement = elementUnderMouse;
+
+        while (currentElement && !currentElement.classList.contains('floor-container')) {
+            currentElement = currentElement.parentElement;
+            if (!currentElement || currentElement.classList.contains('drop-zone')) break;
+        }
+
+        if (currentElement && currentElement.classList.contains('floor-container')) {
+            currentElement.style.border = '3px solid #27ae60';
+            currentElement.style.background = '#e8f5e8';
         }
     }
 
     function clearDropHighlight(event) {
         const zone = event.currentTarget;
         if (draggedTeacher) {
-            const floorContainers = zone.querySelectorAll('.floor-container');
-            floorContainers.forEach(container => {
-                const floorName = container.querySelector('strong').textContent.replace(':', '');
-                if (floorName === draggedTeacher.floor) {
-                    zone.style.background = '#f0f8ff';
-                }
-            });
+            zone.style.background = '#f0f8ff';
+            zone.style.border = '2px dashed #2196f3';
         }
         zone.style.transform = '';
+        zone.style.boxShadow = '';
     }
 
     function drop(event) {
@@ -141,71 +167,150 @@
         const targetDay = targetZone.dataset.day;
         const targetBreak = targetZone.dataset.break;
 
-        // Finde das richtige Stockwerk-Container in der Zielzone
-        const floorContainers = targetZone.querySelectorAll('.floor-container');
-        let targetFloorContainer = null;
-
-        floorContainers.forEach(container => {
-            const floorName = container.querySelector('strong').textContent.replace(':', '');
-            if (floorName === draggedTeacher.floor) {
-                targetFloorContainer = container;
-            }
-        });
-
-        if (!targetFloorContainer) {
-            alert('Lehrkraft kann nur innerhalb desselben Stockwerks verschoben werden!');
-            return;
-        }
-
         // Prüfe, ob es eine andere Position ist
         if (draggedTeacher.sourceDay === targetDay && draggedTeacher.sourceBreak === targetBreak) {
+            resetDragState();
             return; // Gleiche Position
         }
 
+        // Direktes Drop ohne Dialog
+        performDirectDrop(targetZone, targetDay, targetBreak, event);
+    }
+
+    function performDirectDrop(targetZone, targetDay, targetBreak, event) {
+        // Bestimme das Ziel-Stockwerk basierend auf Drop-Position
+        let targetFloorContainer = null;
+        let targetFloorName = null;
+
+        // Finde das Stockwerk unter dem Mauszeiger
+        const elementUnderMouse = document.elementFromPoint(event.clientX, event.clientY);
+
+        // Suche nach dem nächsten floor-container
+        let currentElement = elementUnderMouse;
+        while (currentElement && !currentElement.classList.contains('floor-container')) {
+            currentElement = currentElement.parentElement;
+            if (currentElement === targetZone) break;
+        }
+
+        if (currentElement && currentElement.classList.contains('floor-container')) {
+            targetFloorContainer = currentElement;
+            targetFloorName = currentElement.querySelector('strong').textContent.replace(':', '').trim();
+        } else {
+            // Fallback: Nehme das erste verfügbare Stockwerk in der Zielzone
+            const firstFloorContainer = targetZone.querySelector('.floor-container');
+            if (firstFloorContainer) {
+                targetFloorContainer = firstFloorContainer;
+                targetFloorName = firstFloorContainer.querySelector('strong').textContent.replace(':', '').trim();
+            }
+        }
+
+        if (!targetFloorContainer || !targetFloorName) {
+            showErrorMessage('Kein gültiges Ziel-Stockwerk gefunden!');
+            resetDragState();
+            return;
+        }
+
+        // Führe die Verschiebung durch
+        executeTeacherMove(targetFloorContainer, targetDay, targetBreak, targetFloorName);
+    }
+
+    function showErrorMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.textContent = message;
+        messageDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            padding: 1rem;
+            z-index: 1000;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        `;
+
+        document.body.appendChild(messageDiv);
+
+        setTimeout(() => {
+            if (document.body.contains(messageDiv)) {
+                document.body.removeChild(messageDiv);
+            }
+        }, 3000);
+    }
+
+    function executeTeacherMove(targetFloorContainer, targetDay, targetBreak, targetFloorName) {
         // Finde die ursprüngliche Lehrkraft-Chip
         const originalChip = document.querySelector(
             `[data-teacher="${draggedTeacher.teacher}"][data-floor="${draggedTeacher.floor}"][data-day="${draggedTeacher.sourceDay}"][data-break="${draggedTeacher.sourceBreak}"]`
         );
 
-        if (originalChip) {
-            // Entferne die Lehrkraft von der ursprünglichen Position
-            originalChip.remove();
-
-            // Erstelle neue Lehrkraft-Chip für die Zielposition
-            const newChip = document.createElement('span');
-            newChip.className = 'teacher-chip';
-            newChip.draggable = true;
-            newChip.ondragstart = dragStart;
-            newChip.ondragend = dragEnd;
-            newChip.dataset.teacher = draggedTeacher.teacher;
-            newChip.dataset.floor = draggedTeacher.floor;
-            newChip.dataset.day = targetDay;
-            newChip.dataset.break = targetBreak;
-            newChip.style.cssText = 'display: inline-block; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;';
-            newChip.textContent = draggedTeacher.teacher;
-
-            // Füge zur Zielposition hinzu
-            const teachersContainer = targetFloorContainer.querySelector('.teachers-container');
-
-            // Entferne "—" falls vorhanden
-            const emptyIndicator = teachersContainer.querySelector('span[style*="italic"]');
-            if (emptyIndicator) {
-                emptyIndicator.remove();
-            }
-
-            teachersContainer.appendChild(newChip);
-
-            // Animation für erfolgreiche Verschiebung
-            newChip.style.background = '#d4edda';
-            setTimeout(() => {
-                newChip.style.background = '#e3f2fd';
-            }, 1000);
-
-            // Markiere als geändert
-            hasChanges = true;
-            updateSaveButton();
+        if (!originalChip) {
+            showErrorMessage('Ursprüngliche Lehrkraft nicht gefunden!');
+            resetDragState();
+            return;
         }
 
+        // Entferne die Lehrkraft von der ursprünglichen Position
+        originalChip.remove();
+
+        // Prüfe, ob die ursprüngliche Position leer ist und füge "—" hinzu
+        const originalZone = document.querySelector(`[data-day="${draggedTeacher.sourceDay}"][data-break="${draggedTeacher.sourceBreak}"]`);
+        if (originalZone) {
+            originalZone.querySelectorAll('.floor-container').forEach(container => {
+                const floorName = container.querySelector('strong').textContent.replace(':', '').trim();
+                if (floorName === draggedTeacher.floor) {
+                    const teachersContainer = container.querySelector('.teachers-container');
+                    if (teachersContainer.querySelectorAll('.teacher-chip').length === 0) {
+                        teachersContainer.innerHTML = '<span style="color: #999; font-style: italic;">—</span>';
+                    }
+                }
+            });
+        }
+
+        // Erstelle neue Lehrkraft-Chip für die Zielposition
+        const newChip = document.createElement('span');
+        newChip.className = 'teacher-chip';
+        newChip.draggable = true;
+        newChip.ondragstart = dragStart;
+        newChip.ondragend = dragEnd;
+        newChip.dataset.teacher = draggedTeacher.teacher;
+        newChip.dataset.floor = targetFloorName; // Wichtig: Neues Stockwerk setzen!
+        newChip.dataset.day = targetDay;
+        newChip.dataset.break = targetBreak;
+        newChip.style.cssText = 'display: inline-block; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;';
+        newChip.textContent = draggedTeacher.teacher;
+
+        // Füge zur Zielposition hinzu
+        const teachersContainer = targetFloorContainer.querySelector('.teachers-container');
+
+        // Entferne "—" falls vorhanden
+        const emptyIndicator = teachersContainer.querySelector('span[style*="italic"]');
+        if (emptyIndicator) {
+            emptyIndicator.remove();
+        }
+
+        teachersContainer.appendChild(newChip);
+
+        // Animation für erfolgreiche Verschiebung
+        newChip.style.background = '#d4edda';
+        newChip.style.transform = 'scale(1.1)';
+        setTimeout(() => {
+            newChip.style.background = '#e3f2fd';
+            newChip.style.transform = 'scale(1)';
+        }, 500);
+
+        // Markiere als geändert
+        hasChanges = true;
+        updateSaveButton();
+
+        // Kurze Erfolgsmeldung
+        showSuccessMessage(`${draggedTeacher.teacher} → ${targetFloorName}`);
+
+        resetDragState();
+    }
+
+    function resetDragState() {
         // Reset
         draggedTeacher = null;
 
@@ -214,7 +319,39 @@
             zone.style.background = '';
             zone.style.border = '1px solid #ddd';
             zone.style.transform = '';
+            zone.style.boxShadow = '';
         });
+
+        // Reset Stockwerk-Container Highlights
+        document.querySelectorAll('.floor-container').forEach(container => {
+            container.style.border = '3px solid #3498db';
+            container.style.background = '#f8f9fa';
+        });
+    }
+
+    function showSuccessMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.textContent = message;
+        messageDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            padding: 1rem;
+            z-index: 1000;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        `;
+
+        document.body.appendChild(messageDiv);
+
+        setTimeout(() => {
+            if (document.body.contains(messageDiv)) {
+                document.body.removeChild(messageDiv);
+            }
+        }, 3000);
     }
 
     function updateSaveButton() {

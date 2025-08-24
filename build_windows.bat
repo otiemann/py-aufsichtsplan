@@ -1,8 +1,13 @@
 @echo off
 setlocal
 
-REM Python venv optional
-where py >nul 2>nul && set PY=py || set PY=python
+REM Python venv optional - priorisiere neueste Version
+where py >nul 2>nul && (
+  REM Prüfe nach Python 3.13, 3.12, dann Fallback zu py
+  py -3.13 --version >nul 2>nul && set PY=py -3.13 || (
+    py -3.12 --version >nul 2>nul && set PY=py -3.12 || set PY=py
+  )
+) || set PY=python
 
 %PY% -m pip install --upgrade pip
 %PY% -m pip install -r requirements.txt pyinstaller

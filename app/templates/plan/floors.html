@@ -1,13 +1,24 @@
-{% extends "base.html" %}
-
-{% block content %}
+{% extends "base.html" %} {% block content %}
 <h2>Stockwerke</h2>
 
 <form method="post" action="/plan/floors" style="margin-bottom:1rem;">
-    <input type="text" name="name" placeholder="Stockwerk Name" required>
-    <input type="number" name="required_per_break" min="1" value="1" placeholder="Bedarf pro Pause">
-    <input type="number" name="order_index" min="0" value="0" placeholder="Reihenfolge">
-    <button type="submit">Hinzufügen</button>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end; max-width: 800px;">
+        <div>
+            <label for="name" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Stockwerk Name:</label>
+            <input type="text" id="name" name="name" placeholder="z.B. EG u. Hof" required>
+        </div>
+        <div>
+            <label for="required_per_break" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Bedarf pro Pause:</label>
+            <input type="number" id="required_per_break" name="required_per_break" min="1" value="1">
+        </div>
+        <div>
+            <label for="order_index" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Reihenfolge:</label>
+            <input type="number" id="order_index" name="order_index" min="0" value="0">
+        </div>
+        <div>
+            <button type="submit" style="padding: 0.5rem 1rem; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Hinzufügen</button>
+        </div>
+    </div>
 </form>
 
 <table>
@@ -25,8 +36,10 @@
             <td>
                 <form method="post" action="/plan/floors/order" style="display:inline;">
                     <input type="hidden" name="floor_id" value="{{ f.id }}">
-                    <input type="number" name="order_index" value="{{ f.order_index }}" style="width:5rem;">
-                    <button type="submit">Speichern</button>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="number" name="order_index" value="{{ f.order_index }}" style="width:5rem;" title="Reihenfolge ändern">
+                        <button type="submit" style="padding: 0.25rem 0.5rem; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">💾</button>
+                    </div>
                 </form>
             </td>
             <td>{{ f.name }}</td>
@@ -34,7 +47,7 @@
             <td>
                 <form method="post" action="/plan/floors/delete" style="display:inline;" onsubmit="return confirm('Stockwerk {{ f.name }} wirklich löschen?');">
                     <input type="hidden" name="floor_id" value="{{ f.id }}">
-                    <button type="submit">Löschen</button>
+                    <button type="submit" style="padding: 0.25rem 0.5rem; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Stockwerk löschen">🗑️</button>
                 </form>
             </td>
         </tr>
