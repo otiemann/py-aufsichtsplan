@@ -26,16 +26,27 @@ class AutoUpdater:
     def check_for_updates(self) -> Optional[Dict]:
         """Prüft GitHub Releases API nach neuen Versionen"""
         try:
-            url = f"{self.api_base}/releases/latest"
+            # Prüfe alle Releases (auch Prereleases) da wir Beta-Versionen verwenden
+            url = f"{self.api_base}/releases"
             with urllib.request.urlopen(url, timeout=10) as response:
-                release_data = json.loads(response.read().decode())
+                releases_data = json.loads(response.read().decode())
+            
+            # Finde das neueste Release mit Assets
+            latest_release = None
+            for release in releases_data:
+                if release.get("assets") and any(asset["name"] == self.exe_name for asset in release["assets"]):
+                    latest_release = release
+                    break
+            
+            if not latest_release:
+                return None
                 
-            latest_version = release_data["tag_name"].lstrip("v")
+            latest_version = latest_release["tag_name"].lstrip("v")
             
             if self._is_newer_version(latest_version, self.current_version):
                 # Finde download URL für Windows EXE
                 download_url = None
-                for asset in release_data.get("assets", []):
+                for asset in latest_release.get("assets", []):
                     if asset["name"] == self.exe_name:
                         download_url = asset["browser_download_url"]
                         break
@@ -44,9 +55,9 @@ class AutoUpdater:
                     return {
                         "version": latest_version,
                         "download_url": download_url,
-                        "release_notes": release_data.get("body", ""),
-                        "published_at": release_data.get("published_at", ""),
-                        "size": next((a["size"] for a in release_data["assets"] if a["name"] == self.exe_name), 0)
+                        "release_notes": latest_release.get("body", ""),
+                        "published_at": latest_release.get("published_at", ""),
+                        "size": next((a["size"] for a in latest_release["assets"] if a["name"] == self.exe_name), 0)
                     }
                     
         except (urllib.error.URLError, json.JSONDecodeError, KeyError) as e:

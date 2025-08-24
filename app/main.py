@@ -204,10 +204,28 @@ async def get_version():
 
 
 @app.get("/api/check-updates")
-async def check_updates():
+async def check_updates(demo: bool = False):
     """Prüft GitHub Releases nach verfügbaren Updates"""
     try:
-        # Import hier um Abhängigkeiten zu vermeiden wenn updater nicht verfügbar
+        current_version_info = get_version_info()
+        current_version = current_version_info.get("version", "0.0.0")
+        
+        # Demo-Modus für Testzwecke wenn Repository privat ist
+        if demo:  # Echter Update-Check aktiviert
+            # Simuliere ein verfügbares Update
+            from datetime import datetime
+            return JSONResponse(content={
+                "update_available": True,
+                "current_version": current_version,
+                "latest_version": "0.2.3-beta",
+                "download_url": "https://github.com/otiemann/py-aufsichtsplan/releases/download/v0.2.3-beta/Aufsichtsplan.exe",
+                "release_notes": "🎉 Update-Test erfolgreich!\n\n✅ Update-Erkennung funktioniert\n✅ GitHub API Integration aktiv\n✅ Automatische Versionsprüfung\n\nDies ist ein Demo-Update um die Funktionalität zu zeigen.",
+                "published_at": datetime.now().isoformat(),
+                "size_mb": 87.5,
+                "demo_mode": True
+            })
+        
+        # Echter Update-Check (wird verwendet wenn Repository öffentlich ist)
         import sys
         import os
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -215,9 +233,6 @@ async def check_updates():
             sys.path.insert(0, project_root)
         
         from updater import AutoUpdater
-        
-        current_version_info = get_version_info()
-        current_version = current_version_info.get("version", "0.0.0")
         
         updater = AutoUpdater(current_version=current_version)
         update_info = updater.check_for_updates()
