@@ -203,6 +203,49 @@ async def get_version():
         })
 
 
+@app.get("/api/check-updates")
+async def check_updates():
+    """Prüft GitHub Releases nach verfügbaren Updates"""
+    try:
+        # Import hier um Abhängigkeiten zu vermeiden wenn updater nicht verfügbar
+        import sys
+        import os
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        
+        from updater import AutoUpdater
+        
+        current_version_info = get_version_info()
+        current_version = current_version_info.get("version", "0.0.0")
+        
+        updater = AutoUpdater(current_version=current_version)
+        update_info = updater.check_for_updates()
+        
+        if update_info:
+            return JSONResponse(content={
+                "update_available": True,
+                "current_version": current_version,
+                "latest_version": update_info["version"],
+                "download_url": update_info["download_url"],
+                "release_notes": update_info["release_notes"],
+                "published_at": update_info["published_at"],
+                "size_mb": round(update_info["size"] / 1024 / 1024, 1) if update_info["size"] else 0
+            })
+        else:
+            return JSONResponse(content={
+                "update_available": False,
+                "current_version": current_version,
+                "message": "Sie verwenden bereits die neueste Version"
+            })
+            
+    except Exception as e:
+        return JSONResponse(content={
+            "error": True,
+            "message": f"Fehler beim Prüfen auf Updates: {str(e)}"
+        }, status_code=500)
+
+
 @app.post("/shutdown")
 async def shutdown():
     """Beendet die Anwendung ordentlich"""

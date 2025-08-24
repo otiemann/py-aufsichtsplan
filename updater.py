@@ -19,7 +19,7 @@ from pathlib import Path
 class AutoUpdater:
     def __init__(self, current_version: str = "1.0.0"):
         self.current_version = current_version
-        self.github_repo = "olivertiemann/py-aufsichtsplan"  # Anpassen an Ihr Repo
+        self.github_repo = "otiemann/py-aufsichtsplan"  # Anpassen an Ihr Repo
         self.api_base = f"https://api.github.com/repos/{self.github_repo}"
         self.exe_name = "Aufsichtsplan.exe"
         

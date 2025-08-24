@@ -132,23 +132,48 @@
         updateInfo.style.display = 'none';
 
         try {
-            // Hier würde normalerweise die Update-API aufgerufen werden
-            // Für jetzt zeigen wir eine Info-Nachricht
-            setTimeout(() => {
+            const response = await fetch('/api/check-updates');
+            const data = await response.json();
+
+            if (data.error) {
                 updateInfo.innerHTML = `
-                <h4 style="margin-top: 0; color: #155724;">ℹ️ Update-Prüfung</h4>
-                <p>Die automatische Update-Prüfung wird implementiert, sobald das erste Release auf GitHub verfügbar ist.</p>
+                <h4 style="margin-top: 0; color: #721c24;">❌ Fehler</h4>
+                <p>${data.message}</p>
                 <p><strong>Manueller Update-Check:</strong></p>
                 <ol>
                     <li>Besuchen Sie: <a href="https://github.com/olivertiemann/py-aufsichtsplan/releases" target="_blank">GitHub Releases</a></li>
                     <li>Laden Sie die neueste <code>Aufsichtsplan.exe</code> herunter</li>
                     <li>Ersetzen Sie die aktuelle EXE-Datei</li>
                 </ol>
-            `;
+                `;
                 updateInfo.style.display = 'block';
-                button.disabled = false;
-                button.textContent = 'Updates prüfen';
-            }, 1000);
+            } else if (data.update_available) {
+                updateInfo.innerHTML = `
+                <h4 style="margin-top: 0; color: #0c5460;">🎉 Update verfügbar!</h4>
+                <p><strong>Aktuelle Version:</strong> v${data.current_version}</p>
+                <p><strong>Neue Version:</strong> v${data.latest_version}</p>
+                <p><strong>Größe:</strong> ${data.size_mb} MB</p>
+                <p><strong>Veröffentlicht:</strong> ${new Date(data.published_at).toLocaleDateString('de-DE')}</p>
+                <div style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: 5px;">
+                    <p><strong>Installation:</strong></p>
+                    <ol>
+                        <li><a href="${data.download_url}" target="_blank" style="color: #0066cc; font-weight: bold;">Aufsichtsplan.exe herunterladen</a></li>
+                        <li>Aktuelle Anwendung beenden</li>
+                        <li>Alte EXE-Datei ersetzen</li>
+                        <li>Neue Version starten</li>
+                    </ol>
+                </div>
+                ${data.release_notes ? `<div style="margin-top: 1rem;"><h5>Änderungen:</h5><pre style="white-space: pre-wrap; font-size: 0.9em;">${data.release_notes}</pre></div>` : ''}
+                `;
+                updateInfo.style.display = 'block';
+            } else {
+                updateInfo.innerHTML = `
+                <h4 style="margin-top: 0; color: #155724;">✅ Aktuell</h4>
+                <p>${data.message}</p>
+                <p>Version: v${data.current_version}</p>
+                `;
+                updateInfo.style.display = 'block';
+            }
 
         } catch (error) {
             updateInfo.innerHTML = `
