@@ -1,4 +1,13 @@
 <div id="planContainer">
+    {% if teacher_options_json %}
+    <script>
+        window.teacherOptions = {{ teacher_options_json | safe }};
+    </script>
+    {% else %}
+    <script>
+        window.teacherOptions = window.teacherOptions || [];
+    </script>
+    {% endif %}
     <table style="width: 100%; border-collapse: collapse;">
         <thead>
             <tr style="background: #f5f5f5;">
@@ -18,14 +27,26 @@
                 <td class="drop-zone" data-day="{{ d_idx }}" data-break="{{ b }}" style="border: 1px solid #ddd; padding: 8px; vertical-align: top; min-height: 60px; position: relative;" ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="clearDropHighlight(event)"
                     ondragenter="handleDragEnter(event)">
                     {% for line in grid[d_idx][b] %} {% set outer_loop = loop %} {% for floor_line in [line] %} {% if ':' in floor_line %} {% set floor_name, teachers_str = floor_line.split(':', 1) %}
-                    <div class="floor-container" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
+                    <div class="floor-container" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
                         <strong>{{ floor_name.strip() }}:</strong>
                         <div class="teachers-container" style="margin-top: 2px;">
-                            {% if teachers_str.strip() != '—' and teachers_str.strip() != '' %} {% for teacher in teachers_str.split(',') %} {% if teacher.strip() %}
-                            <span class="teacher-chip" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher.strip() }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" style="display: inline-block; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;">
-                                            {{ teacher.strip() }}
-                                        </span> {% endif %} {% endfor %} {% else %}
-                            <span style="color: #999; font-style: italic;">—</span> {% endif %}
+                            {% if teachers_str.strip() != '—' and teachers_str.strip() != '' %}
+                                {% for teacher in teachers_str.split(',') %}
+                                    {% if teacher.strip() %}
+                                        <span class="teacher-chip" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher.strip() }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" style="display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;">
+                                            <span class="teacher-chip-label">{{ teacher.strip() }}</span>
+                                            <button type="button" class="remove-teacher-btn" onclick="removeTeacher(event)" title="Lehrkraft entfernen" style="border: none; background: transparent; color: #c0392b; font-weight: bold; cursor: pointer; padding: 0; line-height: 1; font-size: 1rem;">×</button>
+                                        </span>
+                                    {% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <span class="teachers-empty-indicator" style="color: #999; font-style: italic;">—</span>
+                            {% endif %}
+                        </div>
+                        <div class="add-teacher-actions" style="margin-top: 6px;">
+                            <button type="button" class="add-teacher-btn" onclick="openAddTeacherDialog(event)" style="padding: 2px 6px; background: #27ae60; color: white; border: none; border-radius: 12px; font-size: 0.8rem; cursor: pointer;">
+                                ➕ Lehrkraft hinzufügen
+                            </button>
                         </div>
                     </div>
                     {% endif %} {% endfor %} {% endfor %}
@@ -62,18 +83,281 @@
 <script>
     let hasChanges = false;
     let draggedTeacher = null;
+    let activeAddDialog = null;
+
+    const teacherOptions = Array.isArray(window.teacherOptions) ? window.teacherOptions : [];
+    const TEACHER_CHIP_STYLE = 'display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;';
+    const REMOVE_BUTTON_STYLE = 'border: none; background: transparent; color: #c0392b; font-weight: bold; cursor: pointer; padding: 0; line-height: 1; font-size: 1rem;';
+
+    function getTeacherOption(value) {
+        if (!value) {
+            return null;
+        }
+        const normalized = value.toLowerCase();
+        return teacherOptions.find(opt => {
+            if (!opt) return false;
+            const optionValue = (opt.value || '').toLowerCase();
+            const optionDisplay = (opt.display || '').toLowerCase();
+            const optionAbbrev = (opt.abbreviation || '').toLowerCase();
+            if (optionValue === normalized) return true;
+            if (optionDisplay === normalized) return true;
+            if (optionAbbrev === normalized) return true;
+            return false;
+        }) || null;
+    }
+
+    function getTeacherDisplayName(value) {
+        const option = getTeacherOption(value);
+        if (option && option.display) {
+            return option.display;
+        }
+        return value || '';
+    }
+
+    function removePlaceholder(container) {
+        if (!container) {
+            return;
+        }
+        const placeholder = container.querySelector('.teachers-empty-indicator');
+        if (placeholder) {
+            placeholder.remove();
+        }
+    }
+
+    function ensurePlaceholder(container) {
+        if (!container) {
+            return;
+        }
+        if (container.querySelector('.teacher-chip')) {
+            const existing = container.querySelector('.teachers-empty-indicator');
+            if (existing) {
+                existing.remove();
+            }
+            return;
+        }
+        if (!container.querySelector('.teachers-empty-indicator')) {
+            const placeholder = document.createElement('span');
+            placeholder.className = 'teachers-empty-indicator';
+            placeholder.style.color = '#999';
+            placeholder.style.fontStyle = 'italic';
+            placeholder.textContent = '—';
+            container.appendChild(placeholder);
+        }
+    }
+
+    function createTeacherChip(teacherData, floorName, day, breakIndex) {
+        const value = teacherData.value;
+        const label = teacherData.label || value;
+        const chip = document.createElement('span');
+        chip.className = 'teacher-chip';
+        chip.draggable = true;
+        chip.dataset.teacher = value;
+        chip.dataset.floor = floorName;
+        chip.dataset.day = String(day);
+        chip.dataset.break = String(breakIndex);
+        chip.style.cssText = TEACHER_CHIP_STYLE;
+        chip.ondragstart = dragStart;
+        chip.ondragend = dragEnd;
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'teacher-chip-label';
+        labelSpan.textContent = label;
+        chip.appendChild(labelSpan);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'remove-teacher-btn';
+        removeBtn.title = 'Lehrkraft entfernen';
+        removeBtn.style.cssText = REMOVE_BUTTON_STYLE;
+        removeBtn.textContent = '×';
+        removeBtn.onclick = removeTeacher;
+        chip.appendChild(removeBtn);
+
+        return chip;
+    }
+
+    function animateChip(chip) {
+        if (!chip) {
+            return;
+        }
+        chip.style.background = '#d4edda';
+        chip.style.transform = 'scale(1.1)';
+        setTimeout(() => {
+            chip.style.background = '#e3f2fd';
+            chip.style.transform = 'scale(1)';
+        }, 500);
+    }
+
+    function ensureTeacherOptionsDatalist() {
+        const datalistId = 'teacherOptionsList';
+        let datalist = document.getElementById(datalistId);
+        if (!datalist) {
+            datalist = document.createElement('datalist');
+            datalist.id = datalistId;
+            document.body.appendChild(datalist);
+        }
+
+        if (!datalist.dataset.populated) {
+            datalist.innerHTML = '';
+            teacherOptions.forEach(opt => {
+                if (!opt) return;
+                const option = document.createElement('option');
+                option.value = opt.value;
+                if (opt.display && opt.display !== opt.value) {
+                    option.label = opt.display;
+                }
+                datalist.appendChild(option);
+            });
+            datalist.dataset.populated = 'true';
+        }
+        return datalist;
+    }
+
+    function closeAddTeacherDialog() {
+        if (activeAddDialog && activeAddDialog.parentElement) {
+            activeAddDialog.parentElement.removeChild(activeAddDialog);
+        }
+        activeAddDialog = null;
+    }
+
+    function handleAddTeacherConfirm(floorContainer, day, breakIndex, rawValue) {
+        if (!rawValue) {
+            showErrorMessage('Bitte eine Lehrkraft auswählen.');
+            return;
+        }
+
+        const option = getTeacherOption(rawValue.trim());
+        if (!option) {
+            showErrorMessage(`Lehrkraft "${rawValue}" nicht gefunden.`);
+            return;
+        }
+
+        const success = addTeacherToContainer(floorContainer, day, breakIndex, option);
+        if (success) {
+            closeAddTeacherDialog();
+        }
+    }
+
+    function addTeacherToContainer(floorContainer, day, breakIndex, option) {
+        const teachersContainer = floorContainer.querySelector('.teachers-container');
+        if (!teachersContainer) {
+            showErrorMessage('Fehler: Zielbereich nicht gefunden.');
+            return false;
+        }
+
+        const teacherValue = option.value;
+
+        const alreadyAssigned = Array.from(teachersContainer.querySelectorAll('.teacher-chip')).some(chip => chip.dataset.teacher === teacherValue);
+        if (alreadyAssigned) {
+            showErrorMessage(`${getTeacherDisplayName(teacherValue)} ist bereits zugewiesen.`);
+            return false;
+        }
+
+        removePlaceholder(teachersContainer);
+
+        const chip = createTeacherChip({ value: teacherValue, label: option.value }, floorContainer.dataset.floor, day, breakIndex);
+        teachersContainer.appendChild(chip);
+        animateChip(chip);
+
+        hasChanges = true;
+        updateSaveButton();
+        showSuccessMessage(`${getTeacherDisplayName(teacherValue)} → ${floorContainer.dataset.floor}`);
+        return true;
+    }
+
+    function openAddTeacherDialog(event) {
+        event.stopPropagation();
+
+        if (!teacherOptions.length) {
+            showErrorMessage('Keine Lehrkräfte verfügbar. Bitte zuerst Lehrkräfte importieren.');
+            return;
+        }
+
+        const button = event.currentTarget;
+        const floorContainer = button.closest('.floor-container');
+        if (!floorContainer) {
+            return;
+        }
+
+        if (activeAddDialog && activeAddDialog.parentElement === floorContainer) {
+            closeAddTeacherDialog();
+            return;
+        }
+
+        closeAddTeacherDialog();
+
+        const datalist = ensureTeacherOptionsDatalist();
+
+        const dialog = document.createElement('div');
+        dialog.className = 'add-teacher-dialog';
+        dialog.style.cssText = 'margin-top: 6px; background: #ffffff; border: 1px solid #27ae60; border-radius: 6px; padding: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Kürzel oder Name';
+        input.style.cssText = 'flex: 1; min-width: 160px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px;';
+        input.setAttribute('list', datalist.id);
+
+        const confirmButton = document.createElement('button');
+        confirmButton.type = 'button';
+        confirmButton.textContent = 'Hinzufügen';
+        confirmButton.style.cssText = 'padding: 4px 8px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer;';
+        confirmButton.addEventListener('click', () => {
+            handleAddTeacherConfirm(floorContainer, floorContainer.dataset.day, floorContainer.dataset.break, input.value.trim());
+        });
+
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.textContent = 'Abbrechen';
+        cancelButton.style.cssText = 'padding: 4px 8px; background: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer;';
+        cancelButton.addEventListener('click', () => {
+            closeAddTeacherDialog();
+        });
+
+        dialog.appendChild(input);
+        dialog.appendChild(confirmButton);
+        dialog.appendChild(cancelButton);
+
+        floorContainer.appendChild(dialog);
+        activeAddDialog = dialog;
+
+        setTimeout(() => {
+            input.focus();
+        }, 0);
+    }
+
+    function removeTeacher(event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const button = event.currentTarget;
+        const chip = button.closest('.teacher-chip');
+        if (!chip) {
+            return;
+        }
+
+        const teachersContainer = chip.closest('.teachers-container');
+        const teacherValue = chip.dataset.teacher;
+        const floorName = chip.dataset.floor;
+
+        chip.remove();
+        ensurePlaceholder(teachersContainer);
+
+        hasChanges = true;
+        updateSaveButton();
+        showSuccessMessage(`${getTeacherDisplayName(teacherValue)} von ${floorName} entfernt`);
+    }
 
     function dragStart(event) {
-        console.log('Drag Start Event:', event.target);
+        closeAddTeacherDialog();
 
         draggedTeacher = {
             teacher: event.target.dataset.teacher,
             floor: event.target.dataset.floor,
             sourceDay: event.target.dataset.day,
-            sourceBreak: event.target.dataset.break
+            sourceBreak: event.target.dataset.break,
         };
-
-        console.log('Dragged Teacher Data:', draggedTeacher);
+        draggedTeacher.display = event.target.querySelector('.teacher-chip-label')?.textContent?.trim() || getTeacherDisplayName(draggedTeacher.teacher);
 
         if (!draggedTeacher.teacher || !draggedTeacher.floor) {
             console.error('Unvollständige Teacher-Daten beim Drag Start:', draggedTeacher);
@@ -174,23 +458,13 @@
 
     function drop(event) {
         event.preventDefault();
-        console.log('Drop Event:', event.currentTarget, draggedTeacher);
-
         if (!draggedTeacher) {
-            console.log('Kein draggedTeacher beim Drop');
             return;
         }
 
         const targetZone = event.currentTarget;
         const targetDay = targetZone.dataset.day;
         const targetBreak = targetZone.dataset.break;
-
-        console.log('Drop Target:', {
-            targetDay,
-            targetBreak,
-            sourceDay: draggedTeacher.sourceDay,
-            sourceBreak: draggedTeacher.sourceBreak
-        });
 
         // Bestimme zunächst das Ziel-Stockwerk für den Vergleich
         let targetFloorName = null;
@@ -202,18 +476,12 @@
         }
 
         if (currentElement && currentElement.classList.contains('floor-container')) {
-            const strongElement = currentElement.querySelector('strong');
-            if (strongElement) {
-                targetFloorName = strongElement.textContent.replace(':', '').trim();
-            }
+            targetFloorName = currentElement.dataset.floor || currentElement.querySelector('strong')?.textContent.replace(':', '').trim();
         } else {
             // Fallback: Nehme das erste verfügbare Stockwerk in der Zielzone
             const firstFloorContainer = targetZone.querySelector('.floor-container');
             if (firstFloorContainer) {
-                const strongElement = firstFloorContainer.querySelector('strong');
-                if (strongElement) {
-                    targetFloorName = strongElement.textContent.replace(':', '').trim();
-                }
+                targetFloorName = firstFloorContainer.dataset.floor || firstFloorContainer.querySelector('strong')?.textContent.replace(':', '').trim();
             }
         }
 
@@ -221,17 +489,10 @@
         if (draggedTeacher.sourceDay === targetDay &&
             draggedTeacher.sourceBreak === targetBreak &&
             draggedTeacher.floor === targetFloorName) {
-            console.log('Exakt gleiche Position (Tag, Pause, Stockwerk) - Drop abgebrochen');
             resetDragState();
             return; // Exakt gleiche Position
         }
 
-        // Direktes Drop ohne Dialog
-        console.log('Führe Direct Drop aus - Ziel:', {
-            targetDay,
-            targetBreak,
-            targetFloorName
-        });
         performDirectDrop(targetZone, targetDay, targetBreak, event);
     }
 
@@ -252,20 +513,16 @@
 
         if (currentElement && currentElement.classList.contains('floor-container')) {
             targetFloorContainer = currentElement;
-            const strongElement = currentElement.querySelector('strong');
-            if (strongElement) {
-                targetFloorName = strongElement.textContent.replace(':', '').trim();
-            }
         } else {
             // Fallback: Nehme das erste verfügbare Stockwerk in der Zielzone
             const firstFloorContainer = targetZone.querySelector('.floor-container');
             if (firstFloorContainer) {
                 targetFloorContainer = firstFloorContainer;
-                const strongElement = firstFloorContainer.querySelector('strong');
-                if (strongElement) {
-                    targetFloorName = strongElement.textContent.replace(':', '').trim();
-                }
             }
+        }
+
+        if (targetFloorContainer) {
+            targetFloorName = targetFloorContainer.dataset.floor || targetFloorContainer.querySelector('strong')?.textContent.replace(':', '').trim();
         }
 
         if (!targetFloorContainer || !targetFloorName) {
@@ -310,10 +567,8 @@
     }
 
     function executeTeacherMove(targetFloorContainer, targetDay, targetBreak, targetFloorName) {
-        // Finde die ursprüngliche Lehrkraft-Chip
-        const originalChip = document.querySelector(
-            `[data-teacher="${draggedTeacher.teacher}"][data-floor="${draggedTeacher.floor}"][data-day="${draggedTeacher.sourceDay}"][data-break="${draggedTeacher.sourceBreak}"]`
-        );
+        const selector = `[data-teacher="${draggedTeacher.teacher}"][data-floor="${draggedTeacher.floor}"][data-day="${draggedTeacher.sourceDay}"][data-break="${draggedTeacher.sourceBreak}"]`;
+        const originalChip = document.querySelector(selector);
 
         if (!originalChip) {
             showErrorMessage('Ursprüngliche Lehrkraft nicht gefunden!');
@@ -321,61 +576,31 @@
             return;
         }
 
-        // Entferne die Lehrkraft von der ursprünglichen Position
+        const sourceTeachersContainer = originalChip.closest('.teachers-container');
         originalChip.remove();
+        ensurePlaceholder(sourceTeachersContainer);
 
-        // Prüfe, ob die ursprüngliche Position leer ist und füge "—" hinzu
-        const originalZone = document.querySelector(`[data-day="${draggedTeacher.sourceDay}"][data-break="${draggedTeacher.sourceBreak}"]`);
-        if (originalZone) {
-            originalZone.querySelectorAll('.floor-container').forEach(container => {
-                const floorName = container.querySelector('strong').textContent.replace(':', '').trim();
-                if (floorName === draggedTeacher.floor) {
-                    const teachersContainer = container.querySelector('.teachers-container');
-                    if (teachersContainer.querySelectorAll('.teacher-chip').length === 0) {
-                        teachersContainer.innerHTML = '<span style="color: #999; font-style: italic;">—</span>';
-                    }
-                }
-            });
-        }
-
-        // Erstelle neue Lehrkraft-Chip für die Zielposition
-        const newChip = document.createElement('span');
-        newChip.className = 'teacher-chip';
-        newChip.draggable = true;
-        newChip.ondragstart = dragStart;
-        newChip.ondragend = dragEnd;
-        newChip.dataset.teacher = draggedTeacher.teacher;
-        newChip.dataset.floor = targetFloorName; // Wichtig: Neues Stockwerk setzen!
-        newChip.dataset.day = targetDay;
-        newChip.dataset.break = targetBreak;
-        newChip.style.cssText = 'display: inline-block; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;';
-        newChip.textContent = draggedTeacher.teacher;
-
-        // Füge zur Zielposition hinzu
         const teachersContainer = targetFloorContainer.querySelector('.teachers-container');
-
-        // Entferne "—" falls vorhanden
-        const emptyIndicator = teachersContainer.querySelector('span[style*="italic"]');
-        if (emptyIndicator) {
-            emptyIndicator.remove();
+        if (!teachersContainer) {
+            showErrorMessage('Zielbereich nicht gefunden.');
+            resetDragState();
+            return;
         }
 
-        teachersContainer.appendChild(newChip);
+        removePlaceholder(teachersContainer);
 
-        // Animation für erfolgreiche Verschiebung
-        newChip.style.background = '#d4edda';
-        newChip.style.transform = 'scale(1.1)';
-        setTimeout(() => {
-            newChip.style.background = '#e3f2fd';
-            newChip.style.transform = 'scale(1)';
-        }, 500);
+        const chip = createTeacherChip(
+            { value: draggedTeacher.teacher, label: draggedTeacher.display || draggedTeacher.teacher },
+            targetFloorName,
+            targetDay,
+            targetBreak
+        );
+        teachersContainer.appendChild(chip);
+        animateChip(chip);
 
-        // Markiere als geändert
         hasChanges = true;
         updateSaveButton();
-
-        // Kurze Erfolgsmeldung
-        showSuccessMessage(`${draggedTeacher.teacher} → ${targetFloorName}`);
+        showSuccessMessage(`${draggedTeacher.display || draggedTeacher.teacher} → ${targetFloorName}`);
 
         resetDragState();
     }
@@ -532,30 +757,7 @@
 
     // Initialisierung der Drag-and-Drop-Funktionalität
     function initializeDragAndDrop() {
-        console.log('Initialisiere Drag-and-Drop-Funktionalität');
-
-        // Prüfe alle Teacher-Chips
-        const teacherChips = document.querySelectorAll('.teacher-chip');
-        console.log('Gefundene Teacher-Chips:', teacherChips.length);
-
-        teacherChips.forEach((chip, index) => {
-            if (!chip.draggable) {
-                console.warn(`Teacher-Chip ${index} ist nicht draggable:`, chip);
-            }
-            if (!chip.ondragstart) {
-                console.warn(`Teacher-Chip ${index} hat keinen dragstart Handler:`, chip);
-            }
-        });
-
-        // Prüfe alle Drop-Zonen
-        const dropZones = document.querySelectorAll('.drop-zone');
-        console.log('Gefundene Drop-Zonen:', dropZones.length);
-
-        dropZones.forEach((zone, index) => {
-            if (!zone.ondrop) {
-                console.warn(`Drop-Zone ${index} hat keinen drop Handler:`, zone);
-            }
-        });
+        ensureTeacherOptionsDatalist();
     }
 
     // Initialisiere nach dem Laden
@@ -570,17 +772,37 @@
 
     // Hover-Effekte für bessere UX
     document.addEventListener('mouseover', function(e) {
-        if (e.target.classList.contains('teacher-chip')) {
-            e.target.style.background = '#bbdefb';
-            e.target.style.transform = 'scale(1.05)';
+        const chip = e.target.closest('.teacher-chip');
+        if (!chip) {
+            return;
         }
+        chip.style.background = '#bbdefb';
+        chip.style.transform = 'scale(1.05)';
     });
 
     document.addEventListener('mouseout', function(e) {
-        if (e.target.classList.contains('teacher-chip')) {
-            e.target.style.background = '#e3f2fd';
-            e.target.style.transform = 'scale(1)';
+        const chip = e.target.closest('.teacher-chip');
+        if (!chip) {
+            return;
         }
+        if (chip.contains(e.relatedTarget)) {
+            return;
+        }
+        chip.style.background = '#e3f2fd';
+        chip.style.transform = 'scale(1)';
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!activeAddDialog) {
+            return;
+        }
+        if (activeAddDialog.contains(e.target)) {
+            return;
+        }
+        if (e.target.closest('.add-teacher-btn')) {
+            return;
+        }
+        closeAddTeacherDialog();
     });
 </script>
 {% endif %}
