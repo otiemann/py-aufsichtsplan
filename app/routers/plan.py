@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict
 
@@ -161,6 +162,17 @@ async def generate_get(request: Request, db: Session = Depends(get_db)):
     bpd = 4
     grid = build_week_grid(db, start_date, bpd)
     counts = week_counts(db, start_date, end_date)
+    teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
+    teacher_options = [
+        {
+            "id": t.id,
+            "abbreviation": t.abbreviation or "",
+            "display": (t.abbreviation + " – " if t.abbreviation else "") + f"{t.last_name}, {t.first_name}",
+            "value": t.abbreviation or f"{t.last_name}, {t.first_name}",
+        }
+        for t in teachers
+    ]
+    teacher_options_json = json.dumps(teacher_options, ensure_ascii=False)
     return templates.TemplateResponse(
         "plan/generate.html",
         {
@@ -170,6 +182,7 @@ async def generate_get(request: Request, db: Session = Depends(get_db)):
             "breaks_per_day": bpd,
             "grid": grid,
             "counts": counts,
+            "teacher_options_json": teacher_options_json,
         },
     )
 
@@ -184,6 +197,17 @@ async def generate_post(
     generate_assignments(db, start_date, end_date, bpd)
     grid = build_week_grid(db, start_date, bpd)
     counts = week_counts(db, start_date, end_date)
+    teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
+    teacher_options = [
+        {
+            "id": t.id,
+            "abbreviation": t.abbreviation or "",
+            "display": (t.abbreviation + " – " if t.abbreviation else "") + f"{t.last_name}, {t.first_name}",
+            "value": t.abbreviation or f"{t.last_name}, {t.first_name}",
+        }
+        for t in teachers
+    ]
+    teacher_options_json = json.dumps(teacher_options, ensure_ascii=False)
     return templates.TemplateResponse(
         "plan/week.html",
         {
@@ -193,6 +217,7 @@ async def generate_post(
             "breaks_per_day": bpd,
             "grid": grid,
             "counts": counts,
+            "teacher_options_json": teacher_options_json,
         },
     )
 

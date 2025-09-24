@@ -143,10 +143,10 @@ async def upload_teachers(
 
 
 @router.post("/teachers/set-exempt")
-async def set_exempt(teacher_id: int = Form(...), value: int = Form(1), db: Session = Depends(get_db)):
+async def set_exempt(teacher_id: int = Form(...), exempt: bool = Form(False), db: Session = Depends(get_db)):
     t = db.get(Teacher, teacher_id)
     if t is not None:
-        t.exempt = bool(value)
+        t.exempt = exempt
         db.commit()
     return RedirectResponse(url="/admin/teachers", status_code=303)
 
@@ -343,6 +343,5 @@ async def update_attendance_from_lessons_route(db: Session = Depends(get_db)):
     response = RedirectResponse(url="/admin", status_code=303)
     response.set_cookie("flash", f"Anwesenheitstage von {count} Lehrkräften aus Stundenplan aktualisiert", max_age=5)
     return response
-
 
 

@@ -1,7 +1,7 @@
 {% extends "base.html" %} {% block content %}
 <h2>Lehrkräfte</h2>
 
-<form method="post" action="/admin/teachers/bulk">
+<form id="bulkForm" method="post" action="/admin/teachers/bulk">
     <div style="margin: .5rem 0;">
         <button type="submit" name="action" value="set_exempt">Als „keine Aufsicht" markieren</button>
         <button type="submit" name="action" value="unset_exempt">„Keine Aufsicht" entfernen</button>
@@ -21,8 +21,9 @@
         <label style="margin-left: 10px;"><input type="checkbox" name="bulk_days" value="Fr" checked> Fr</label>
         <button type="submit" formaction="/admin/teachers/bulk-attendance" formmethod="post" style="margin-left: 15px;">Anwesenheitstage (Masse) setzen</button>
     </div>
+</form>
 
-    <table>
+<table>
         <thead>
             <tr>
                 <th style="width:2rem;"><input type="checkbox" onclick="document.querySelectorAll('input[name=ids]').forEach(cb=>cb.checked=this.checked)"></th>
@@ -40,7 +41,7 @@
         <tbody>
             {% for t in teachers %}
             <tr>
-                <td><input type="checkbox" name="ids" value="{{ t.id }}"></td>
+                <td><input type="checkbox" name="ids" value="{{ t.id }}" form="bulkForm"></td>
                 <td>{{ t.abbreviation }}</td>
                 <td>{{ t.last_name }}</td>
                 <td>{{ t.first_name }}</td>
@@ -126,7 +127,6 @@
             {% endfor %}
         </tbody>
     </table>
-</form>
 
 <script>
     function showAttendanceEdit(teacherId) {
