@@ -55,7 +55,7 @@
                     <form method="post" action="/admin/teachers/set-quota" style="display:inline;">
                         <input type="hidden" name="teacher_id" value="{{ t.id }}">
                         <input type="number" name="target_duties" min="0" value="{{ t.quota.target_duties if t.quota else 0 }}" style="width:4rem">
-                        <button type="submit">Set</button>
+                        <button type="submit">Speichern</button>
                     </form>
                 </td>
                 <td>
