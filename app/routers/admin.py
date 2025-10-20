@@ -1,5 +1,6 @@
 from typing import List, Optional, Union
 import os
+import tempfile
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.requests import Request
@@ -295,23 +296,22 @@ async def bulk_set_attendance(
 @router.post("/import-gpu")
 async def import_gpu(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Importiert Stundenplandaten aus GPU001.TXT"""
-    if not file.filename or not file.filename.endswith('.TXT'):
+    filename = file.filename or ""
+    if not filename or os.path.splitext(filename)[1].lower() != ".txt":
         response = RedirectResponse(url="/admin", status_code=303)
         response.set_cookie("flash", "Bitte eine .TXT-Datei auswählen", max_age=5)
         return response
     
+    temp_path = None
     try:
-        # Temporäre Datei speichern
-        temp_path = f"/tmp/{file.filename}"
-        with open(temp_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
-        
+        # Temporäre Datei speichern (plattformunabhängig)
+        content = await file.read()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as tmp_file:
+            tmp_file.write(content)
+            temp_path = tmp_file.name
+
         # Importieren
         stats = import_gpu_file(db, temp_path)
-        
-        # Temporäre Datei löschen
-        os.unlink(temp_path)
         
         response = RedirectResponse(url="/admin", status_code=303)
         flash_msg = f"GPU-Import erfolgreich: {stats['imported']} Stunden importiert, Anwesenheitstage automatisch aktualisiert"
@@ -325,6 +325,12 @@ async def import_gpu(file: UploadFile = File(...), db: Session = Depends(get_db)
         response = RedirectResponse(url="/admin", status_code=303)
         response.set_cookie("flash", f"Fehler beim GPU-Import: {str(e)}", max_age=10)
         return response
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except FileNotFoundError:
+                pass
 
 
 @router.post("/clear-lessons")
@@ -343,5 +349,4 @@ async def update_attendance_from_lessons_route(db: Session = Depends(get_db)):
     response = RedirectResponse(url="/admin", status_code=303)
     response.set_cookie("flash", f"Anwesenheitstage von {count} Lehrkräften aus Stundenplan aktualisiert", max_age=5)
     return response
-
 
