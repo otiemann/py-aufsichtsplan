@@ -243,21 +243,47 @@ def generate_assignments(
             else:
                 candidates_with_duties_today.append((t, target, assigned, duties_today, is_preferred_floor))
         
-        # PRIORITÄT 1: Lehrkräfte ohne Aufsichten heute
-        # PRIORITÄT 2: Lehrkräfte mit bereits einer Aufsicht heute (nur als Notfall)
-        priority_pools = [candidates_no_duties_today, candidates_with_duties_today]
-        
-        for candidates in priority_pools:
-            if not candidates:
-                continue
-            
-            preferred_first = [entry for entry in candidates if entry[4]]
-            non_preferred = [entry for entry in candidates if not entry[4]]
-            
-            for candidate_group in (preferred_first, non_preferred):
+        candidate_entries = candidates_no_duties_today + candidates_with_duties_today
+        zero_day_entries = [entry for entry in candidate_entries if entry[3] == 0]
+        if zero_day_entries:
+            candidate_entries = zero_day_entries
+            priority_matrix = [
+                (0, 0),  # Präferenz, keine Aufsicht heute
+                (1, 0),  # Keine Präferenz, keine Aufsicht heute
+                (2, 0),  # Konfliktpräferenz, keine Aufsicht heute
+            ]
+        else:
+            priority_matrix = [
+                (0, 0),  # Präferenz, keine Aufsicht heute
+                (0, 1),  # Präferenz, bereits Aufsicht heute
+                (1, 0),  # Keine Präferenz, keine Aufsicht heute
+                (1, 1),  # Keine Präferenz, bereits Aufsicht heute
+                (2, 0),  # Konfliktpräferenz, keine Aufsicht heute
+                (2, 1),  # Konfliktpräferenz, bereits Aufsicht heute
+            ]
+        if candidate_entries:
+
+            def classify(entry: Tuple[Teacher, int, int, int, bool]) -> Tuple[int, int]:
+                t = entry[0]
+                duties_today = entry[3]
+                if t.preferred_floor_id == floor_id:
+                    pref_group = 0
+                elif t.preferred_floor_id is None:
+                    pref_group = 1
+                else:
+                    pref_group = 2
+                duty_group = 0 if duties_today == 0 else 1
+                return pref_group, duty_group
+
+            for pref_group, duty_group in priority_matrix:
+                candidate_group = [
+                    entry
+                    for entry in candidate_entries
+                    if classify(entry) == (pref_group, duty_group)
+                ]
                 if not candidate_group:
                     continue
-                
+
                 best_t = None
                 best_key = None
                 
@@ -318,8 +344,11 @@ def generate_assignments(
                         best_t = t
                 
                 if best_t is not None:
+                    if best_t.preferred_floor_id and best_t.preferred_floor_id != floor_id:
+                        pref_name = best_t.preferred_floor.name if best_t.preferred_floor else f"ID {best_t.preferred_floor_id}"
+                        print(f"[INFO] {best_t.abbreviation} bevorzugt {pref_name}, wird aber mangels Alternativen für Stockwerk {floor_id} berücksichtigt.")
                     return best_t
-        
+
         return None
 
     def pick_teacher_fallback_1(d: date, break_index: int, floor_id: int) -> Optional[Teacher]:
@@ -353,8 +382,10 @@ def generate_assignments(
                 .all()
             ]
             
+            duties_today = len(existing_breaks)
+
             # Behalte noch Tageslimit bei
-            if len(existing_breaks) >= 2:
+            if duties_today >= 2:
                 continue
             
             # Behalte noch aufeinanderfolgende Pausen-Regel bei
@@ -362,14 +393,33 @@ def generate_assignments(
             if has_consecutive:
                 continue
             
-            candidates.append(t)
+            candidates.append((t, duties_today))
         
-        # Bevorzuge Lehrkräfte mit Stockwerk-Präferenz
-        preferred_candidates = [t for t in candidates if t.preferred_floor_id == floor_id]
-        if preferred_candidates:
-            return min(preferred_candidates, key=lambda t: existing_counts.get(t.id, 0))
-        elif candidates:
-            return min(candidates, key=lambda t: existing_counts.get(t.id, 0))
+        def pick_best(entries):
+            if not entries:
+                return None
+            zero = [item for item in entries if item[1] == 0]
+            pool = zero if zero else entries
+            chosen_entry = min(pool, key=lambda item: (existing_counts.get(item[0].id, 0), item[0].id))
+            return chosen_entry[0]
+
+        preferred_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id == floor_id]
+        neutral_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id is None]
+        conflicting_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id not in (None, floor_id)]
+
+        chosen = pick_best(preferred_candidates)
+        if chosen:
+            return chosen
+
+        chosen = pick_best(neutral_candidates)
+        if chosen:
+            return chosen
+
+        chosen = pick_best(conflicting_candidates)
+        if chosen:
+            pref_name = chosen.preferred_floor.name if chosen.preferred_floor else f"ID {chosen.preferred_floor_id}"
+            print(f"[WARN] Fallback 1 überschreibt Präferenz von {chosen.abbreviation} ({pref_name}) für Stockwerk {floor_id}.")
+            return chosen
         return None
 
     def pick_teacher_fallback_2(d: date, break_index: int, floor_id: int) -> Optional[Teacher]:
@@ -408,14 +458,33 @@ def generate_assignments(
             if has_consecutive:
                 continue
             
-            candidates.append(t)
+            candidates.append((t, len(existing_breaks)))
         
-        # Bevorzuge Lehrkräfte mit Stockwerk-Präferenz
-        preferred_candidates = [t for t in candidates if t.preferred_floor_id == floor_id]
-        if preferred_candidates:
-            return min(preferred_candidates, key=lambda t: existing_counts.get(t.id, 0))
-        elif candidates:
-            return min(candidates, key=lambda t: existing_counts.get(t.id, 0))
+        def pick_best(entries):
+            if not entries:
+                return None
+            zero = [item for item in entries if item[1] == 0]
+            pool = zero if zero else entries
+            chosen_entry = min(pool, key=lambda item: (existing_counts.get(item[0].id, 0), item[0].id))
+            return chosen_entry[0]
+
+        preferred_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id == floor_id]
+        neutral_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id is None]
+        conflicting_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id not in (None, floor_id)]
+
+        chosen = pick_best(preferred_candidates)
+        if chosen:
+            return chosen
+
+        chosen = pick_best(neutral_candidates)
+        if chosen:
+            return chosen
+
+        chosen = pick_best(conflicting_candidates)
+        if chosen:
+            pref_name = chosen.preferred_floor.name if chosen.preferred_floor else f"ID {chosen.preferred_floor_id}"
+            print(f"[WARN] Fallback 2 überschreibt Präferenz von {chosen.abbreviation} ({pref_name}) für Stockwerk {floor_id}.")
+            return chosen
         return None
 
     def pick_teacher_fallback_3(d: date, break_index: int, floor_id: int) -> Optional[Teacher]:
@@ -452,14 +521,33 @@ def generate_assignments(
             if has_consecutive:
                 continue
             
-            candidates.append(t)
+            candidates.append((t, len(existing_breaks)))
         
-        # Bevorzuge Lehrkräfte mit Stockwerk-Präferenz, auch im Notfall
-        preferred_candidates = [t for t in candidates if t.preferred_floor_id == floor_id]
-        if preferred_candidates:
-            return min(preferred_candidates, key=lambda t: existing_counts.get(t.id, 0))
-        elif candidates:
-            return min(candidates, key=lambda t: existing_counts.get(t.id, 0))
+        def pick_best(entries):
+            if not entries:
+                return None
+            zero = [item for item in entries if item[1] == 0]
+            pool = zero if zero else entries
+            chosen_entry = min(pool, key=lambda item: (existing_counts.get(item[0].id, 0), item[0].id))
+            return chosen_entry[0]
+
+        preferred_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id == floor_id]
+        neutral_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id is None]
+        conflicting_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id not in (None, floor_id)]
+
+        chosen = pick_best(preferred_candidates)
+        if chosen:
+            return chosen
+
+        chosen = pick_best(neutral_candidates)
+        if chosen:
+            return chosen
+
+        chosen = pick_best(conflicting_candidates)
+        if chosen:
+            pref_name = chosen.preferred_floor.name if chosen.preferred_floor else f"ID {chosen.preferred_floor_id}"
+            print(f"[WARN] Fallback 3 überschreibt Präferenz von {chosen.abbreviation} ({pref_name}) für Stockwerk {floor_id}.")
+            return chosen
         return None
 
     floor_required: Dict[int, int] = {}

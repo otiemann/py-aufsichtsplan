@@ -116,6 +116,18 @@ def build_logging_config(log_file: str) -> dict:
 	}
 
 
+def try_build_logging_config(log_file: str) -> dict | None:
+	try:
+		# Test ob Log-Datei angelegt/beschreibbar ist
+		os.makedirs(os.path.dirname(log_file), exist_ok=True)
+		with open(log_file, "a", encoding="utf-8"):
+			pass
+		return build_logging_config(log_file)
+	except OSError as exc:
+		print(f"[WARN] Log-Datei {log_file} nicht beschreibbar ({exc}). Fallback auf Standard-Logging.")
+		return None
+
+
 if __name__ == "__main__":
 	base_dir = get_base_dir()
 	os.environ["APP_RESOURCES_DIR"] = base_dir
@@ -127,7 +139,7 @@ if __name__ == "__main__":
 	os.chdir(exe_dir)
 
 	log_file = os.path.join(data_dir, "app.log")
-	log_config = build_logging_config(log_file)
+	log_config = try_build_logging_config(log_file)
 
 	url = "http://127.0.0.1:8000"
 	open_browser_when_ready(url)

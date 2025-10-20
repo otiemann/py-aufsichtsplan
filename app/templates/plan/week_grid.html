@@ -32,9 +32,22 @@
                         <div class="teachers-container" style="margin-top: 2px;">
                             {% if teachers_str.strip() != '—' and teachers_str.strip() != '' %}
                                 {% for teacher in teachers_str.split(',') %}
-                                    {% if teacher.strip() %}
-                                        <span class="teacher-chip" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher.strip() }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" style="display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;">
-                                            <span class="teacher-chip-label">{{ teacher.strip() }}</span>
+                                    {% set teacher_raw = teacher.strip() %}
+                                    {% if teacher_raw %}
+                                        {% set parts = teacher_raw.split('|') %}
+                                        {% set teacher_label = parts[0].strip() %}
+                                        {% set teacher_warn = (parts|length > 1 and parts[1].strip() == 'warn') %}
+                                        {% set chip_base_style = 'display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 6px; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;' %}
+                                        {% if teacher_warn %}
+                                            {% set chip_style = chip_base_style ~ ' background: #fdecea; border: 1px solid #e74c3c;' %}
+                                        {% else %}
+                                            {% set chip_style = chip_base_style ~ ' background: #e3f2fd; border: 1px solid #2196f3;' %}
+                                        {% endif %}
+                                        <span class="teacher-chip{% if teacher_warn %} teacher-chip-warn{% endif %}" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher_label }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-warning="{{ '1' if teacher_warn else '0' }}" style="{{ chip_style }}">
+                                            <span class="teacher-chip-label">{{ teacher_label }}</span>
+                                            {% if teacher_warn %}
+                                                <span class="teacher-warning" title="Ohne Unterricht vor/nach der Pause eingeteilt" style="color: #e74c3c; font-weight: bold;">!</span>
+                                            {% endif %}
                                             <button type="button" class="remove-teacher-btn" onclick="removeTeacher(event)" title="Lehrkraft entfernen" style="border: none; background: transparent; color: #c0392b; font-weight: bold; cursor: pointer; padding: 0; line-height: 1; font-size: 1rem;">×</button>
                                         </span>
                                     {% endif %}
