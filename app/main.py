@@ -2,12 +2,14 @@ import os
 import signal
 import threading
 import shutil
+import time
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 
 from .database import Base, engine, SessionLocal, SQLALCHEMY_DATABASE_URL
 
@@ -190,7 +192,8 @@ async def check_updates(demo: bool = False):
     try:
         current_version_info = get_version_info()
         current_version = current_version_info.get("version", "0.0.0")
-        
+        is_packaged_app = getattr(sys, "frozen", False) and os.name == "nt"
+
         # Demo-Modus für Testzwecke wenn Repository privat ist
         if demo:  # Echter Update-Check aktiviert
             # Simuliere ein verfügbares Update
@@ -203,12 +206,11 @@ async def check_updates(demo: bool = False):
                 "release_notes": "🎉 Update-Test erfolgreich!\n\n✅ Update-Erkennung funktioniert\n✅ GitHub API Integration aktiv\n✅ Automatische Versionsprüfung\n\nDies ist ein Demo-Update um die Funktionalität zu zeigen.",
                 "published_at": datetime.now().isoformat(),
                 "size_mb": 87.5,
-                "demo_mode": True
+                "demo_mode": True,
+                "auto_install_available": is_packaged_app
             })
-        
+
         # Echter Update-Check (wird verwendet wenn Repository öffentlich ist)
-        import sys
-        import os
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         if project_root not in sys.path:
             sys.path.insert(0, project_root)
@@ -226,19 +228,85 @@ async def check_updates(demo: bool = False):
                 "download_url": update_info["download_url"],
                 "release_notes": update_info["release_notes"],
                 "published_at": update_info["published_at"],
-                "size_mb": round(update_info["size"] / 1024 / 1024, 1) if update_info["size"] else 0
+                "size_mb": round(update_info["size"] / 1024 / 1024, 1) if update_info["size"] else 0,
+                "auto_install_available": is_packaged_app
             })
         else:
             return JSONResponse(content={
                 "update_available": False,
                 "current_version": current_version,
-                "message": "Sie verwenden bereits die neueste Version"
+                "message": "Sie verwenden bereits die neueste Version",
+                "auto_install_available": is_packaged_app
             })
-            
+
     except Exception as e:
         return JSONResponse(content={
             "error": True,
             "message": f"Fehler beim Prüfen auf Updates: {str(e)}"
+        }, status_code=500)
+
+
+@app.post("/api/install-update")
+async def install_update(background_tasks: BackgroundTasks):
+    """Lädt das aktuelle Release herunter und startet die Installation"""
+    try:
+        if not getattr(sys, "frozen", False) or os.name != "nt":
+            return JSONResponse(content={
+                "success": False,
+                "message": "Automatische Updates stehen nur in der Windows-Installation zur Verfügung."
+            }, status_code=400)
+
+        current_version_info = get_version_info()
+        current_version = current_version_info.get("version", "0.0.0")
+
+        from updater import AutoUpdater
+
+        updater = AutoUpdater(current_version=current_version)
+        update_info = await run_in_threadpool(updater.check_for_updates)
+
+        if not update_info:
+            return JSONResponse(content={
+                "success": False,
+                "message": "Kein Update verfügbar."
+            }, status_code=404)
+
+        download_url = update_info.get("download_url")
+        if not download_url:
+            return JSONResponse(content={
+                "success": False,
+                "message": "Das Release enthält keine installierbare Datei."
+            }, status_code=400)
+
+        new_exe_path = await run_in_threadpool(lambda: updater.download_update(download_url))
+        if not new_exe_path:
+            return JSONResponse(content={
+                "success": False,
+                "message": "Das Update konnte nicht heruntergeladen werden."
+            }, status_code=500)
+
+        install_success = await run_in_threadpool(lambda: updater.install_update(new_exe_path))
+        if not install_success:
+            return JSONResponse(content={
+                "success": False,
+                "message": "Die Installation des Updates ist fehlgeschlagen."
+            }, status_code=500)
+
+        def delayed_shutdown() -> None:
+            time.sleep(2)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        background_tasks.add_task(delayed_shutdown)
+
+        return JSONResponse(content={
+            "success": True,
+            "message": "Update wurde installiert. Die Anwendung wird beendet und neu gestartet.",
+            "latest_version": update_info.get("version")
+        })
+
+    except Exception as e:
+        return JSONResponse(content={
+            "success": False,
+            "message": f"Fehler bei der Installation: {str(e)}"
         }, status_code=500)
 
 

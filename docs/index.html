@@ -218,6 +218,11 @@
                 </div>
 
                 <div class="feature">
+                    <h3>🚀 Automatische Updates</h3>
+                    <p>Das Programm erkennt neue Releases auf GitHub Pages sofort und installiert sie auf Wunsch selbständig.</p>
+                </div>
+
+                <div class="feature">
                     <h3>🔧 Einfache Bedienung</h3>
                     <p>Intuitive Benutzeroberfläche ohne komplizierte Installation oder Konfiguration.</p>
                 </div>
@@ -269,7 +274,7 @@
                 // Das erste Release ist das neueste (GitHub sortiert automatisch)
                 const latestRelease = releases[0];
 
-                const version = latestRelease.tag_name || 'v1.0.0';
+                const version = latestRelease.tag_name || 'v0.2.13-beta';
                 const versionElement = document.getElementById('current-version');
                 
                 // Beta-Badge hinzufügen wenn es sich um eine Beta-Version handelt
@@ -303,8 +308,8 @@
                 }
             } catch (error) {
                 console.error('Fehler beim Laden der Versionsinformationen:', error);
-                document.getElementById('current-version').textContent = 'v1.0.0';
-                document.getElementById('last-updated').textContent = 'Unbekannt';
+                document.getElementById('current-version').textContent = 'v0.2.13-beta';
+                document.getElementById('last-updated').textContent = '21.10.2025';
                 
                 // Fallback Download-Link
                 const downloadBtn = document.getElementById('download-btn');

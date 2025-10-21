@@ -149,6 +149,7 @@
     // Version beim Laden der Seite abrufen
     document.addEventListener('DOMContentLoaded', function() {
         loadCurrentVersion();
+        checkForUpdates(true);
     });
 
     async function loadCurrentVersion() {
@@ -162,12 +163,14 @@
         }
     }
 
-    async function checkForUpdates() {
+    async function checkForUpdates(auto = false) {
         const button = document.getElementById('check-updates-btn');
         const updateInfo = document.getElementById('update-info');
 
-        button.disabled = true;
-        button.textContent = 'Prüfe...';
+        if (!auto) {
+            button.disabled = true;
+            button.textContent = 'Prüfe...';
+        }
         updateInfo.style.display = 'none';
 
         try {
@@ -187,21 +190,35 @@
                 `;
                 updateInfo.style.display = 'block';
             } else if (data.update_available) {
-                updateInfo.innerHTML = `
-                <h4 style="margin-top: 0; color: #0c5460;">🎉 Update verfügbar!</h4>
-                <p><strong>Aktuelle Version:</strong> v${data.current_version}</p>
-                <p><strong>Neue Version:</strong> v${data.latest_version}</p>
-                <p><strong>Größe:</strong> ${data.size_mb} MB</p>
-                <p><strong>Veröffentlicht:</strong> ${new Date(data.published_at).toLocaleDateString('de-DE')}</p>
+                const manualInstructions = `
                 <div style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: 5px;">
-                    <p><strong>Installation:</strong></p>
+                    <p><strong>Manuelle Installation:</strong></p>
                     <ol>
                         <li><a href="${data.download_url}" target="_blank" style="color: #0066cc; font-weight: bold;">Aufsichtsplan.exe herunterladen</a></li>
                         <li>Aktuelle Anwendung beenden</li>
                         <li>Alte EXE-Datei ersetzen</li>
                         <li>Neue Version starten</li>
                     </ol>
+                </div>`;
+
+                const automaticInstallControls = data.auto_install_available ? `
+                <div style="margin: 1rem 0; padding: 1rem; background: #e2f0d9; border-radius: 5px; border-left: 3px solid #28a745;">
+                    <p style="margin: 0 0 0.5rem 0;"><strong>Automatische Installation verfügbar:</strong></p>
+                    <button id="install-update-btn" onclick="installUpdate()" style="padding: 0.6rem 1rem; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">🚀 Update jetzt installieren</button>
+                    <p id="install-status" style="margin-top: 0.6rem; font-size: 0.9rem; color: #155724; display: none;"></p>
+                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: #155724;">Die Anwendung wird nach der Installation automatisch beendet und neu gestartet.</p>
                 </div>
+                ` : '';
+
+                const installationSection = `${automaticInstallControls}${manualInstructions}`;
+
+                updateInfo.innerHTML = `
+                <h4 style="margin-top: 0; color: #0c5460;">🎉 Update verfügbar!</h4>
+                <p><strong>Aktuelle Version:</strong> v${data.current_version}</p>
+                <p><strong>Neue Version:</strong> v${data.latest_version}</p>
+                <p><strong>Größe:</strong> ${data.size_mb} MB</p>
+                <p><strong>Veröffentlicht:</strong> ${new Date(data.published_at).toLocaleDateString('de-DE')}</p>
+                ${installationSection}
                 ${data.release_notes ? `<div style="margin-top: 1rem;"><h5>Änderungen:</h5><pre style="white-space: pre-wrap; font-size: 0.9em;">${data.release_notes}</pre></div>` : ''}
                 `;
                 updateInfo.style.display = 'block';
@@ -221,8 +238,49 @@
             </div>
         `;
             updateInfo.style.display = 'block';
-            button.disabled = false;
-            button.textContent = 'Updates prüfen';
+        } finally {
+            if (!auto) {
+                button.disabled = false;
+                button.textContent = 'Updates prüfen';
+            }
+        }
+    }
+
+    async function installUpdate() {
+        const installButton = document.getElementById('install-update-btn');
+        const statusElement = document.getElementById('install-status');
+
+        if (!installButton || !statusElement) {
+            return;
+        }
+
+        installButton.disabled = true;
+        installButton.textContent = 'Installiere...';
+        statusElement.style.display = 'block';
+        statusElement.style.color = '#155724';
+        statusElement.textContent = 'Update wird heruntergeladen und installiert...';
+
+        try {
+            const response = await fetch('/api/install-update', { method: 'POST' });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                const message = data && data.message ? data.message : 'Unbekannter Fehler beim Installieren des Updates.';
+                statusElement.style.color = '#721c24';
+                statusElement.textContent = `❌ ${message}`;
+                installButton.disabled = false;
+                installButton.textContent = '🚀 Update jetzt installieren';
+                return;
+            }
+
+            statusElement.style.color = '#155724';
+            statusElement.textContent = '✅ Update erfolgreich gestartet. Die Anwendung wird automatisch beendet.';
+            installButton.textContent = 'Installation läuft...';
+        } catch (error) {
+            statusElement.style.color = '#721c24';
+            statusElement.textContent = `❌ ${error.message}`;
+            installButton.disabled = false;
+            installButton.textContent = '🚀 Update jetzt installieren';
         }
     }
 
