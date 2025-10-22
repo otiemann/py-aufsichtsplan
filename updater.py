@@ -6,14 +6,14 @@ Separates Tool das GitHub Releases überwacht und Updates installiert
 import os
 import sys
 import json
-import time
 import shutil
 import tempfile
 import subprocess
 import urllib.request
 import urllib.error
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from pathlib import Path
+import textwrap
 
 
 class AutoUpdater:
@@ -106,48 +106,92 @@ class AutoUpdater:
         """Installiert das Update (ersetzt aktuelle EXE)"""
         if not os.path.exists(new_exe_path):
             return False
-            
+
         try:
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
             if not current_exe:
                 print("Kann aktuelle EXE nicht finden (nicht als gefrorene App ausgeführt)")
                 return False
-                
+
             # Backup der aktuellen Version
             backup_path = current_exe + ".backup"
             if os.path.exists(backup_path):
                 os.remove(backup_path)
             shutil.copy2(current_exe, backup_path)
-            
-            # PowerShell Script für verzögerte Installation (umgeht Datei-Locks)
-            ps_script = f'''
-            Start-Sleep -Seconds 2
-            try {{
-                if (Test-Path "{current_exe}") {{
-                    Remove-Item "{current_exe}" -Force
+
+            install_dir = tempfile.mkdtemp(prefix="aufsichtsplan_install_")
+            script_path = Path(install_dir) / "install_update.ps1"
+
+            def _escape(path: str) -> str:
+                return path.replace('"', '`"')
+
+            escaped_current_exe = _escape(current_exe)
+            escaped_new_exe = _escape(new_exe_path)
+            escaped_backup = _escape(backup_path)
+            escaped_script = _escape(str(script_path))
+            current_pid = os.getpid()
+
+            script_content = textwrap.dedent(f"""
+                $ErrorActionPreference = 'Stop'
+                $currentExe = "{escaped_current_exe}"
+                $newExe = "{escaped_new_exe}"
+                $backupExe = "{escaped_backup}"
+                $scriptPath = "{escaped_script}"
+                $serverPid = {current_pid}
+
+                Start-Sleep -Seconds 2
+
+                $timeout = (Get-Date).AddMinutes(2)
+                while ((Get-Process -Id $serverPid -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $timeout)) {{
+                    Start-Sleep -Milliseconds 500
                 }}
-                Copy-Item "{new_exe_path}" "{current_exe}" -Force
-                Start-Process "{current_exe}"
-                if (Test-Path "{backup_path}") {{
-                    Remove-Item "{backup_path}" -Force
+
+                try {{
+                    if (Test-Path $currentExe) {{
+                        Remove-Item $currentExe -Force
+                    }}
+                    Copy-Item $newExe $currentExe -Force
+                    Start-Process $currentExe
+                    if (Test-Path $backupExe) {{
+                        Remove-Item $backupExe -Force
+                    }}
+                    if (Test-Path $newExe) {{
+                        Remove-Item $newExe -Force
+                    }}
+                }} catch {{
+                    if (Test-Path $backupExe) {{
+                        Copy-Item $backupExe $currentExe -Force
+                    }}
+                    throw
+                }} finally {{
+                    try {{
+                        if (Test-Path $scriptPath) {{
+                            Remove-Item $scriptPath -Force
+                        }}
+                        $parentDir = Split-Path $scriptPath -Parent
+                        if ($parentDir -and (Test-Path $parentDir)) {{
+                            Remove-Item $parentDir -Force -Recurse
+                        }}
+                    }} catch {{}}
                 }}
-                Remove-Item "{new_exe_path}" -Force
-            }} catch {{
-                if (Test-Path "{backup_path}") {{
-                    Copy-Item "{backup_path}" "{current_exe}" -Force
-                }}
-                throw
-            }}
-            '''
-            
-            # Starte PowerShell Script im Hintergrund
+            """)
+
+            script_path.write_text(script_content, encoding="utf-8")
+
+            creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
             subprocess.Popen([
-                "powershell", "-WindowStyle", "Hidden", "-Command", ps_script
-            ], creationflags=subprocess.CREATE_NO_WINDOW)
-            
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+            ], creationflags=creation_flags)
+
             print("Update wird installiert. Anwendung wird neu gestartet...")
             return True
-            
+
         except Exception as e:
             print(f"Fehler bei der Installation: {e}")
             return False
