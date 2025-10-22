@@ -39,3 +39,4 @@ htmlcov/
 GPU001.TXT
 activate_py313.sh
 GPU009.txt
+user_db_copy.db

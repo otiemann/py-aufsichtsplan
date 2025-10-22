@@ -239,9 +239,9 @@ def generate_assignments(
 
             # Trenne nach Aufsichten heute
             if duties_today == 0:
-                candidates_no_duties_today.append((t, target, assigned, duties_today, is_preferred_floor))
+                candidates_no_duties_today.append((t, target, assigned, duties_today, is_preferred_floor, existing_breaks))
             else:
-                candidates_with_duties_today.append((t, target, assigned, duties_today, is_preferred_floor))
+                candidates_with_duties_today.append((t, target, assigned, duties_today, is_preferred_floor, existing_breaks))
         
         candidate_entries = candidates_no_duties_today + candidates_with_duties_today
         zero_day_entries = [entry for entry in candidate_entries if entry[3] == 0]
@@ -287,7 +287,8 @@ def generate_assignments(
                 best_t = None
                 best_key = None
                 
-                for t, target, assigned, duties_today, _is_preferred in candidate_group:
+                for entry in candidate_group:
+                    t, target, assigned, duties_today, _is_preferred, existing_breaks = entry
                     # Basis-Bewertung
                     ratio = assigned / max(target, 1)
                     
@@ -331,12 +332,22 @@ def generate_assignments(
                         + floor_preference_bonus
                         + part_time_bonus
                     )
+
+                    # Anzahl der verbleibenden Optionen für spätere Pausen an diesem Tag (gleicher Standort)
+                    future_options = 0
+                    for future_break in range(break_index + 1, breaks_per_day + 1):
+                        if any(abs(eb - future_break) == 1 for eb in existing_breaks):
+                            continue
+                        if not t.is_available_for_supervision(weekday, future_break):
+                            continue
+                        future_options += 1
                     
                     key = (
-                        combined_distribution_score,  # 1. Tagesverteilung + Stockwerk-Präferenz
-                        ratio + same_day_penalty,     # 2. Soll-Ist-Verhältnis + Strafe
-                        assigned,                     # 3. Absolute Anzahl
-                        random_bias[t.id],            # 4. Zufalls-Bias
+                        future_options,               # 1. Bevorzugt Lehrkräfte mit wenig Restoptionen
+                        combined_distribution_score,  # 2. Tagesverteilung + Stockwerk-Präferenz
+                        ratio + same_day_penalty,     # 3. Soll-Ist-Verhältnis + Strafe
+                        assigned,                     # 4. Absolute Anzahl
+                        random_bias[t.id],            # 5. Zufalls-Bias
                     )
                     
                     if best_key is None or key < best_key:
