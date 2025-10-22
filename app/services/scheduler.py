@@ -488,9 +488,9 @@ def generate_assignments(
         return None
 
     def pick_teacher_fallback_3(d: date, break_index: int, floor_id: int) -> Optional[Teacher]:
-        """FALLBACK 3: NOTFALL - Ignoriere Unterrichtsstunden, nur Anwesenheit prüfen, Soll-Ziele bleiben Grenze"""
+        """FALLBACK 3: NOTFALL - Ignoriere Soll-Ziele, Unterrichtskriterium bleibt verpflichtend"""
         weekday = d.weekday()
-        
+
         already = set(
             t_id for (t_id,) in db.query(Assignment.teacher_id)
             .join(DutySlot, DutySlot.id == Assignment.duty_slot_id)
@@ -502,38 +502,64 @@ def generate_assignments(
         for t, target in eligible:
             if t.id in already:
                 continue
-            assigned = existing_counts.get(t.id, 0)
-            if assigned >= target:
-                continue
             if not t.is_available_on_weekday(weekday):
                 continue
-            
+            if not t.is_available_for_supervision(weekday, break_index):
+                continue
+
+            assigned = existing_counts.get(t.id, 0)
+
             # Ignoriere ALLES außer aufeinanderfolgenden Pausen
             existing_breaks = [
-                break_idx for (break_idx,) in 
+                break_idx for (break_idx,) in
                 db.query(DutySlot.break_index)
                 .join(Assignment, Assignment.duty_slot_id == DutySlot.id)
                 .filter(Assignment.teacher_id == t.id, DutySlot.date == d)
                 .all()
             ]
-            
+
             has_consecutive = any(abs(eb - break_index) == 1 for eb in existing_breaks)
             if has_consecutive:
                 continue
-            
-            candidates.append((t, len(existing_breaks)))
-        
+
+            candidates.append((t, len(existing_breaks), assigned, target))
+
         def pick_best(entries):
             if not entries:
                 return None
             zero = [item for item in entries if item[1] == 0]
             pool = zero if zero else entries
-            chosen_entry = min(pool, key=lambda item: (existing_counts.get(item[0].id, 0), item[0].id))
+
+            def sort_key(item: Tuple[Teacher, int, int, int]):
+                t, duties_today, assigned, target = item
+                below_target_flag = 0 if target and assigned < target else 1
+                ratio = (assigned / max(target, 1)) if target else assigned
+                return (
+                    below_target_flag,
+                    ratio,
+                    duties_today,
+                    existing_counts.get(t.id, 0),
+                    t.id,
+                )
+
+            chosen_entry = min(pool, key=sort_key)
             return chosen_entry[0]
 
-        preferred_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id == floor_id]
-        neutral_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id is None]
-        conflicting_candidates = [(t, duty_count) for t, duty_count in candidates if t.preferred_floor_id not in (None, floor_id)]
+        preferred_candidates = [
+            (t, duty_count, assigned, target)
+            for t, duty_count, assigned, target in candidates
+            if t.preferred_floor_id == floor_id
+        ]
+        neutral_candidates = [
+            (t, duty_count, assigned, target)
+            for t, duty_count, assigned, target in candidates
+            if t.preferred_floor_id is None
+        ]
+        conflicting_candidates = [
+            (t, duty_count, assigned, target)
+            for t, duty_count, assigned, target in candidates
+            if t.preferred_floor_id not in (None, floor_id)
+        ]
 
         chosen = pick_best(preferred_candidates)
         if chosen:

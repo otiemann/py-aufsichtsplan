@@ -61,6 +61,19 @@ def break_labels() -> List[str]:
 
 def build_week_grid(db: Session, start_date: date, breaks_per_day: int) -> List[List[List[str]]]:
     floors = db.query(Floor).order_by(Floor.order_index, Floor.name).all()
+    end_date = start_date + timedelta(days=4)
+
+    teacher_day_counts: Dict[tuple[int, date], int] = {
+        (teacher_id, duty_date): int(count)
+        for teacher_id, duty_date, count in (
+            db.query(Assignment.teacher_id, DutySlot.date, func.count(Assignment.id))
+            .join(DutySlot, DutySlot.id == Assignment.duty_slot_id)
+            .filter(DutySlot.date >= start_date, DutySlot.date <= end_date)
+            .group_by(Assignment.teacher_id, DutySlot.date)
+            .all()
+        )
+    }
+
     grid: List[List[List[str]]] = []
     for day_offset in range(5):
         d = start_date + timedelta(days=day_offset)
@@ -86,9 +99,15 @@ def build_week_grid(db: Session, start_date: date, breaks_per_day: int) -> List[
                     labels = []
                     for t in teachers:
                         label = t.abbreviation or f"{t.last_name}, {t.first_name}"
-                        warn_suffix = ""
+                        warn_reasons: List[str] = []
                         if not t.is_available_for_supervision(weekday, b):
-                            warn_suffix = "|warn"
+                            warn_reasons.append("no-lesson")
+                        if teacher_day_counts.get((t.id, slot.date), 0) > 1:
+                            warn_reasons.append("double-duty")
+
+                        warn_suffix = ""
+                        if warn_reasons:
+                            warn_suffix = "|warn:" + ";".join(warn_reasons)
                         labels.append(f"{label}{warn_suffix}")
                 cell_lines.append(f"{f.name}: {', '.join(labels) if labels else '—'}")
             row.append(cell_lines)
