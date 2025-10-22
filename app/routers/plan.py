@@ -131,14 +131,19 @@ def week_counts(db: Session, start_date: date, end_date: date) -> List[Dict]:
         .all()
     )
     out: List[Dict] = []
+    total_assignments = 0
     for t, cnt in rows:
+        count_int = int(cnt or 0)
+        total_assignments += count_int
+        target = t.quota.target_duties if t.quota else 0
         out.append({
             "abbreviation": t.abbreviation or "",
             "first_name": t.first_name,
             "last_name": t.last_name,
-            "count": int(cnt or 0),
+            "count": count_int,
+            "target": int(target or 0),
         })
-    return out
+    return out, total_assignments
 
 
 @router.get("/floors")
@@ -187,7 +192,7 @@ async def generate_get(request: Request, db: Session = Depends(get_db)):
     start_date, end_date = current_week_range()
     bpd = 4
     grid = build_week_grid(db, start_date, bpd)
-    counts = week_counts(db, start_date, end_date)
+    counts, total_assignments = week_counts(db, start_date, end_date)
     teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
     teacher_options = [
         {
@@ -208,6 +213,7 @@ async def generate_get(request: Request, db: Session = Depends(get_db)):
             "breaks_per_day": bpd,
             "grid": grid,
             "counts": counts,
+            "total_assignments": total_assignments,
             "teacher_options_json": teacher_options_json,
         },
     )
@@ -222,7 +228,7 @@ async def generate_post(
     bpd = 4
     generate_assignments(db, start_date, end_date, bpd)
     grid = build_week_grid(db, start_date, bpd)
-    counts = week_counts(db, start_date, end_date)
+    counts, total_assignments = week_counts(db, start_date, end_date)
     teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
     teacher_options = [
         {
@@ -243,6 +249,7 @@ async def generate_post(
             "breaks_per_day": bpd,
             "grid": grid,
             "counts": counts,
+            "total_assignments": total_assignments,
             "teacher_options_json": teacher_options_json,
         },
     )
