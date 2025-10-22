@@ -36,17 +36,32 @@
                                     {% if teacher_raw %}
                                         {% set parts = teacher_raw.split('|') %}
                                         {% set teacher_label = parts[0].strip() %}
-                                        {% set teacher_warn = (parts|length > 1 and parts[1].strip() == 'warn') %}
+                                        {% set warn_meta = parts[1].strip() if parts|length > 1 else '' %}
+                                        {% set teacher_warn = warn_meta.startswith('warn') %}
+                                        {% set warn_parts = warn_meta.split(':', 1) if teacher_warn else [] %}
+                                        {% set warn_payload = warn_parts[1] if warn_parts and warn_parts|length > 1 else '' %}
+                                        {% set warn_reasons = warn_payload.split(';') if warn_payload else [] %}
+                                        {% set warn_messages = [] %}
+                                        {% for reason in warn_reasons %}
+                                            {% if reason == 'no-lesson' %}
+                                                {% set warn_messages = warn_messages + ['Ohne Unterricht vor/nach der Pause eingeteilt'] %}
+                                            {% elif reason == 'double-duty' %}
+                                                {% set warn_messages = warn_messages + ['Mehr als eine Aufsicht an diesem Tag'] %}
+                                            {% else %}
+                                                {% set warn_messages = warn_messages + ['Warnung'] %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% set warn_title = warn_messages|join(', ') if warn_messages else 'Warnung' %}
                                         {% set chip_base_style = 'display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 6px; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;' %}
                                         {% if teacher_warn %}
                                             {% set chip_style = chip_base_style ~ ' background: #fdecea; border: 1px solid #e74c3c;' %}
                                         {% else %}
                                             {% set chip_style = chip_base_style ~ ' background: #e3f2fd; border: 1px solid #2196f3;' %}
                                         {% endif %}
-                                        <span class="teacher-chip{% if teacher_warn %} teacher-chip-warn{% endif %}" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher_label }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-warning="{{ '1' if teacher_warn else '0' }}" style="{{ chip_style }}">
+                                        <span class="teacher-chip{% if teacher_warn %} teacher-chip-warn{% endif %}" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher_label }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-warning="{{ warn_reasons|join(';') if teacher_warn else '' }}" style="{{ chip_style }}">
                                             <span class="teacher-chip-label">{{ teacher_label }}</span>
                                             {% if teacher_warn %}
-                                                <span class="teacher-warning" title="Ohne Unterricht vor/nach der Pause eingeteilt" style="color: #e74c3c; font-weight: bold;">!</span>
+                                                <span class="teacher-warning" title="{{ warn_title }}" style="color: #e74c3c; font-weight: bold;">!</span>
                                             {% endif %}
                                             <button type="button" class="remove-teacher-btn" onclick="removeTeacher(event)" title="Lehrkraft entfernen" style="border: none; background: transparent; color: #c0392b; font-weight: bold; cursor: pointer; padding: 0; line-height: 1; font-size: 1rem;">×</button>
                                         </span>
