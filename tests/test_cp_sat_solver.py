@@ -25,6 +25,8 @@ def _make_teacher(
         preferred_floor=preferred_floor,
         floor_weights=None,
         day_periods={day: frozenset(periods) for day, periods in periods_by_day.items()},
+        availability_days=len(periods_by_day),
+        nominal_target=target,
     )
 
 

@@ -23,6 +23,8 @@ class TeacherSpec:
     preferred_floor: Optional[int] = None
     floor_weights: Optional[Dict[int, int]] = None
     day_periods: Dict[int, frozenset[int]] = field(default_factory=dict)
+    availability_days: int = 0
+    nominal_target: int = 0
 
     def has_adjacent_lesson(
         self,
@@ -283,8 +285,14 @@ class BreakSupervisionSolver:
         else:
             model.Add(P == 0)
 
-        total_dev = model.NewIntVar(0, len(self.teachers) * deviation_cap, "total_dev")
-        model.Add(total_dev == sum(dev_pos[t.id] + dev_neg[t.id] for t in self.teachers))
+        total_dev = model.NewIntVar(0, len(self.teachers) * deviation_cap * 5, "total_dev")
+        total_dev_terms = []
+        for teacher in self.teachers:
+            over_weight = 1
+            under_weight = max(1, teacher.availability_days or 1)
+            total_dev_terms.append(dev_pos[teacher.id] * over_weight)
+            total_dev_terms.append(dev_neg[teacher.id] * under_weight)
+        model.Add(total_dev == sum(total_dev_terms))
 
         if band_under_terms or band_over_terms:
             total_band_violation = model.NewIntVar(0, len(self.teachers) * deviation_cap, "total_band_violation")

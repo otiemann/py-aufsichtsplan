@@ -200,6 +200,8 @@ def _build_teacher_specs(
         if not isinstance(floor_weights, dict):
             floor_weights = None
 
+        day_periods = _collect_day_periods(teacher)
+        availability_days = len(day_periods)
         specs.append(
             teacher_spec_cls(
                 id=teacher.id,
@@ -207,7 +209,9 @@ def _build_teacher_specs(
                 prio_rank=prio_value,
                 preferred_floor=teacher.preferred_floor_id,
                 floor_weights=floor_weights,
-                day_periods=_collect_day_periods(teacher),
+                day_periods=day_periods,
+                availability_days=availability_days,
+                nominal_target=target,
             )
         )
     return specs
@@ -263,6 +267,49 @@ def _compute_eligibility_map(
                 slot.after_period,
             )
     return eligibility
+
+
+def _adjust_targets_for_total_need(teacher_specs: List["TeacherSpec"], break_slots: List["BreakSlotSpec"]) -> Dict[int, int]:
+    total_need = sum(
+        max(0, need)
+        for slot in break_slots
+        for need in slot.needs.values()
+    )
+    total_nominal = sum(spec.nominal_target for spec in teacher_specs)
+    if total_nominal >= total_need:
+        return {}
+
+    extra = total_need - total_nominal
+    weights: Dict[int, int] = {}
+    for spec in teacher_specs:
+        weight = max(spec.availability_days, 1)
+        if weight == 0 and spec.nominal_target > 0:
+            weight = 1
+        weights[spec.id] = weight
+    weight_sum = sum(weights.values())
+    if weight_sum <= 0:
+        weight_sum = len(teacher_specs) or 1
+        for spec in teacher_specs:
+            weights[spec.id] = 1
+
+    fractional: List[Tuple[float, "TeacherSpec"]] = []
+    allocated = 0
+    for spec in teacher_specs:
+        weight = weights.get(spec.id, 1)
+        raw_share = extra * weight / weight_sum
+        base_extra = int(raw_share)
+        spec.target = spec.nominal_target + base_extra
+        allocated += base_extra
+        fractional.append((raw_share - base_extra, spec))
+
+    remainder = extra - allocated
+    for _, spec in sorted(fractional, key=lambda item: item[0], reverse=True):
+        if remainder <= 0:
+            break
+        spec.target += 1
+        remainder -= 1
+
+    return {spec.id: spec.target - spec.nominal_target for spec in teacher_specs}
 
 
 def _preflight_checks(
@@ -408,6 +455,18 @@ def generate_assignments(
 
     teacher_specs = _build_teacher_specs(teachers, TeacherSpec)
     break_slots = _build_break_slots(start_date, end_date, floors, breaks_per_day, BreakSlotSpec)
+
+    adjustments = _adjust_targets_for_total_need(teacher_specs, break_slots)
+    if adjustments:
+        logger.info(
+            "Zusätzliche Aufsichten erforderlich (%s insgesamt). Verteilung auf Lehrkräfte: %s",
+            sum(adjustments.values()),
+            ", ".join(
+                f"{next((t.abbreviation or t.last_name) for t in teachers if t.id == teacher_id)}:+{extra}"
+                for teacher_id, extra in adjustments.items()
+                if extra > 0
+            ) or "keine",
+        )
 
     if not break_slots:
         logger.info("Keine Break-Slots mit Bedarf im angegebenen Zeitraum.")
