@@ -70,6 +70,9 @@ class SolverResult:
     priority_cost: int
     total_dev: int
     daily_excess: int
+    band_violation: int
+    total_shortfall: int
+    shortfalls: Dict[Tuple[str, int], int]
     status_enum: int
     wall_time_seconds: float
 
@@ -87,6 +90,8 @@ class BreakSupervisionSolver:
         max_one_per_day: bool = False,
         time_limit_s: float = 30.0,
         num_workers: int = 8,
+        band_penalty: int = 200_000,
+        max_extra_duties: Optional[int] = None,
     ) -> None:
         self.teachers: List[TeacherSpec] = list(teachers)
         self.break_slots: List[BreakSlotSpec] = list(break_slots)
@@ -95,6 +100,8 @@ class BreakSupervisionSolver:
         self.max_one_per_day = max_one_per_day
         self.time_limit_s = max(1.0, time_limit_s)
         self.num_workers = max(1, num_workers)
+        self.band_penalty = max(0, int(band_penalty))
+        self.max_extra_duties = max_extra_duties if max_extra_duties is None else max(0, int(max_extra_duties))
 
         self.slot_lookup: Dict[str, BreakSlotSpec] = {slot.slot_id: slot for slot in self.break_slots}
         self.teacher_lookup: Dict[int, TeacherSpec] = {t.id: t for t in self.teachers}
@@ -164,6 +171,9 @@ class BreakSupervisionSolver:
                 priority_cost=0,
                 total_dev=0,
                 daily_excess=0,
+                band_violation=0,
+                total_shortfall=self.total_need,
+                shortfalls={},
                 status_enum=status,
                 wall_time_seconds=0.0,
             )
@@ -177,6 +187,9 @@ class BreakSupervisionSolver:
         day_excess_terms: List[cp_model.IntVar] = []
         priority_terms: List[cp_model.IntVar] = []
         max_cost = 0
+
+        shortfall_vars: Dict[Tuple[str, int], cp_model.IntVar] = {}
+        shortfall_terms: List[cp_model.IntVar] = []
 
         for slot in self.break_slots:
             eligible_teachers = [t for t in self.teachers if self.eligibility(t.id, slot.slot_id)]
@@ -199,7 +212,10 @@ class BreakSupervisionSolver:
                     if cost > max_cost:
                         max_cost = cost
 
-                model.Add(sum(floor_vars) == need)
+                shortfall = model.NewIntVar(0, need, f"short_{slot.slot_id}_{floor_id}")
+                shortfall_vars[(slot.slot_id, floor_id)] = shortfall
+                shortfall_terms.append(shortfall)
+                model.Add(sum(floor_vars) + shortfall == need)
 
         for vars_in_slot in teacher_slot_vars.values():
             model.Add(sum(vars_in_slot) <= 1)
@@ -211,6 +227,9 @@ class BreakSupervisionSolver:
         dev_pos: Dict[int, cp_model.IntVar] = {}
         dev_neg: Dict[int, cp_model.IntVar] = {}
         load_vars: Dict[int, cp_model.IntVar] = {}
+        band_under_terms: List[cp_model.IntVar] = []
+        band_over_terms: List[cp_model.IntVar] = []
+
         for teacher in self.teachers:
             load_var = model.NewIntVar(0, total_need, f"load_{teacher.id}")
             load_vars[teacher.id] = load_var
@@ -228,12 +247,31 @@ class BreakSupervisionSolver:
             if self.fairness_band is not None:
                 min_load = max(0, teacher.target - self.fairness_band)
                 max_load = teacher.target + self.fairness_band
-                model.Add(load_var >= min_load)
-                model.Add(load_var <= max_load)
+                under = model.NewIntVar(0, total_need, f"band_under_{teacher.id}")
+                over = model.NewIntVar(0, total_need, f"band_over_{teacher.id}")
+                model.Add(load_var + under >= min_load)
+                model.Add(load_var - over <= max_load)
+                model.Add(under >= 0)
+                model.Add(over >= 0)
+                if self.max_extra_duties is not None:
+                    model.Add(over <= self.max_extra_duties)
+                band_under_terms.append(under)
+                band_over_terms.append(over)
+            else:
+                if self.max_extra_duties is not None:
+                    cap = teacher.target + self.max_extra_duties
+                    over = model.NewIntVar(0, total_need, f"band_over_{teacher.id}")
+                    model.Add(load_var - over <= cap)
+                    model.Add(over >= 0)
+                    model.Add(over <= self.max_extra_duties)
+                    band_over_terms.append(over)
 
-        if self.max_one_per_day:
-            for key, vars_for_day in day_assignment_vars.items():
-                model.Add(sum(vars_for_day) <= 1)
+            if self.max_extra_duties is not None:
+                extra_cap = teacher.target + (self.fairness_band or 0) + self.max_extra_duties
+                if extra_cap >= 0:
+                    cap_over = model.NewIntVar(0, total_need, f"cap_over_{teacher.id}")
+                    model.Add(load_var <= extra_cap + cap_over)
+                    band_over_terms.append(cap_over)
 
         if priority_terms:
             priority_upper = max_cost * total_need if max_cost else total_need
@@ -247,6 +285,20 @@ class BreakSupervisionSolver:
 
         total_dev = model.NewIntVar(0, len(self.teachers) * deviation_cap, "total_dev")
         model.Add(total_dev == sum(dev_pos[t.id] + dev_neg[t.id] for t in self.teachers))
+
+        if band_under_terms or band_over_terms:
+            total_band_violation = model.NewIntVar(0, len(self.teachers) * deviation_cap, "total_band_violation")
+            model.Add(total_band_violation == sum(band_under_terms + band_over_terms))
+        else:
+            total_band_violation = model.NewIntVar(0, 0, "total_band_violation")
+            model.Add(total_band_violation == 0)
+
+        if shortfall_terms:
+            total_shortfall = model.NewIntVar(0, self.total_need, "total_shortfall")
+            model.Add(total_shortfall == sum(shortfall_terms))
+        else:
+            total_shortfall = model.NewIntVar(0, 0, "total_shortfall")
+            model.Add(total_shortfall == 0)
 
         daily_excess_total: cp_model.IntVar
         if day_assignment_vars:
@@ -282,48 +334,71 @@ class BreakSupervisionSolver:
             daily_excess_total = model.NewIntVar(0, 0, "daily_excess_total")
             model.Add(daily_excess_total == 0)
 
-        model.Minimize(P)
-
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = self.time_limit_s
         solver.parameters.num_search_workers = self.num_workers
 
-        status1 = solver.Solve(model)
-        status_name1 = solver.StatusName(status1)
-
-        if status1 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+        # Phase 1: minimize total shortfall -> deckt Bedarf bestmöglich
+        model.Minimize(total_shortfall)
+        status_phase1 = solver.Solve(model)
+        status_name_phase1 = solver.StatusName(status_phase1)
+        if status_phase1 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
             self._log_infeasibility()
             return SolverResult(
-                status=status_name1,
+                status=status_name_phase1,
                 assignments=[],
                 loads={teacher.id: 0 for teacher in self.teachers},
                 max_dev=0,
                 priority_cost=0,
                 total_dev=0,
                 daily_excess=0,
-                status_enum=status1,
+                band_violation=0,
+                total_shortfall=self.total_need,
+                shortfalls={},
+                status_enum=status_phase1,
                 wall_time_seconds=solver.wall_time,
             )
 
-        best_priority = int(solver.Value(P))
+        best_shortfall = int(solver.Value(total_shortfall))
+        model.Add(total_shortfall == best_shortfall)
 
-        model.Add(P == best_priority)
-        weight_max_dev = 1_000_000
-        weight_total_dev = 10_000
-        model.Minimize(max_dev * weight_max_dev + total_dev * weight_total_dev + daily_excess_total)
+        # Phase 2: Prioritätskosten unter fixiertem Shortfall minimieren
+        model.Minimize(P)
+        status_phase2 = solver.Solve(model)
+        status_name_phase2 = solver.StatusName(status_phase2)
+        if status_phase2 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+            logger.warning("Prioritätsoptimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus Phase 1 wird verwendet.", status_name_phase2)
+            best_priority = 0
+        else:
+            best_priority = int(solver.Value(P))
+            model.Add(P == best_priority)
 
+        # Phase 3: Fairness unter optimalem Shortfall und Priorität
         solver2 = cp_model.CpSolver()
         solver2.parameters.max_time_in_seconds = self.time_limit_s
         solver2.parameters.num_search_workers = self.num_workers
+
+        weight_max_dev = 1_000_000
+        weight_total_dev = 10_000
+        weight_daily_excess = 500_000 if self.max_one_per_day else 100
+        weight_band_violation = self.band_penalty if self.fairness_band is not None or self.max_extra_duties is not None else 0
+        weight_shortfall = 50_000_000
+        model.Minimize(
+            max_dev * weight_max_dev
+            + total_dev * weight_total_dev
+            + daily_excess_total * weight_daily_excess
+            + total_band_violation * weight_band_violation
+            + total_shortfall * weight_shortfall
+        )
 
         status2 = solver2.Solve(model)
         status_name2 = solver2.StatusName(status2)
 
         if status2 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
-            logger.warning("Fairness-Optimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis Phase 1 wird genutzt.", status_name2)
+            logger.warning("Fairness-Optimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.", status_name2)
             solver2 = solver
-            status2 = status1
-            status_name2 = status_name1
+            status2 = status_phase2
+            status_name2 = status_name_phase2
 
         assignments: List[AssignmentDecision] = []
         for (teacher_id, slot_id, floor_id), var in decision_vars.items():
@@ -344,6 +419,13 @@ class BreakSupervisionSolver:
         max_dev_value = solver2.Value(max_dev)
         total_dev_value = solver2.Value(total_dev)
         daily_excess_value = solver2.Value(daily_excess_total)
+        band_violation_value = solver2.Value(total_band_violation)
+        total_shortfall_value = solver2.Value(total_shortfall)
+        shortfall_values = {
+            key: solver2.Value(var)
+            for key, var in shortfall_vars.items()
+            if solver2.Value(var) > 0
+        }
 
         return SolverResult(
             status=status_name2,
@@ -353,6 +435,9 @@ class BreakSupervisionSolver:
             priority_cost=best_priority,
             total_dev=total_dev_value,
             daily_excess=daily_excess_value,
+            band_violation=band_violation_value,
+            total_shortfall=total_shortfall_value,
+            shortfalls=shortfall_values,
             status_enum=status2,
             wall_time_seconds=solver2.wall_time,
         )

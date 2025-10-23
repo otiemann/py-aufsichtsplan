@@ -46,6 +46,30 @@ def _max_one_per_day_enabled() -> bool:
     return raw.lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_band_penalty() -> int:
+    raw = os.getenv("SCHEDULER_BAND_PENALTY", "")
+    if not raw:
+        return 5_000_000
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        logger.warning("Ungültiger Wert für SCHEDULER_BAND_PENALTY (%s). Verwende 5000000.", raw)
+        return 5_000_000
+
+
+def _parse_max_extra_duties() -> Optional[int]:
+    raw = os.getenv("SCHEDULER_MAX_EXTRA_DUTIES", "")
+    if not raw:
+        return 0
+    if raw.lower() in {"none", "off"}:
+        return None
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        logger.warning("Ungültiger Wert für SCHEDULER_MAX_EXTRA_DUTIES (%s). Verwende 0.", raw)
+        return 0
+
+
 def _parse_time_limit() -> float:
     raw = os.getenv("SCHEDULER_TIME_LIMIT_SECONDS", "")
     if not raw:
@@ -224,6 +248,65 @@ def _build_break_slots(
                 )
             )
     return slots
+
+
+def _compute_eligibility_map(
+    teacher_specs: Iterable["TeacherSpec"],
+    break_slots: Iterable["BreakSlotSpec"],
+) -> Dict[Tuple[int, str], bool]:
+    eligibility: Dict[Tuple[int, str], bool] = {}
+    for teacher in teacher_specs:
+        for slot in break_slots:
+            eligibility[(teacher.id, slot.slot_id)] = teacher.has_adjacent_lesson(
+                slot.day_index,
+                slot.before_period,
+                slot.after_period,
+            )
+    return eligibility
+
+
+def _preflight_checks(
+    teacher_specs: List["TeacherSpec"],
+    break_slots: List["BreakSlotSpec"],
+    *,
+    max_one_per_day: bool,
+) -> List[str]:
+    messages: List[str] = []
+    eligibility_map = _compute_eligibility_map(teacher_specs, break_slots)
+    # Slot/Floor coverage
+    for slot in break_slots:
+        eligible_teachers = [
+            teacher.id
+            for teacher in teacher_specs
+            if eligibility_map.get((teacher.id, slot.slot_id), False)
+        ]
+        eligible_count = len(eligible_teachers)
+        for floor_id, need in slot.needs.items():
+            if need <= 0:
+                continue
+            if eligible_count < need:
+                missing = need - eligible_count
+                messages.append(
+                    f"[SLOT] {slot.date} Break {slot.break_index} Floor {floor_id}: Bedarf {need}, Eligible {eligible_count} (Fehlen {missing})."
+                )
+
+    if max_one_per_day:
+        needs_by_day: Dict[date, int] = defaultdict(int)
+        eligible_by_day: Dict[date, set[int]] = defaultdict(set)
+        for slot in break_slots:
+            needs_by_day[slot.date] += sum(need for need in slot.needs.values() if need > 0)
+            for teacher in teacher_specs:
+                if eligibility_map.get((teacher.id, slot.slot_id), False):
+                    eligible_by_day[slot.date].add(teacher.id)
+
+        for duty_date, demand in needs_by_day.items():
+            eligible_heads = len(eligible_by_day.get(duty_date, set()))
+            if eligible_heads < demand:
+                messages.append(
+                    f"[TAG] {duty_date}: Bedarf {demand}, Eligible Lehrkräfte {eligible_heads} (max 1/Tag aktiv)."
+                )
+
+    return messages
     floor_requirements = {
         floor.id: max(0, floor.required_per_break or 0)
         for floor in floors
@@ -332,8 +415,14 @@ def generate_assignments(
 
     fairness_band = _parse_fairness_band()
     max_one_per_day = _max_one_per_day_enabled()
+    band_penalty = _parse_band_penalty()
+    max_extra_duties = _parse_max_extra_duties()
     time_limit = _parse_time_limit()
     num_workers = _parse_num_workers()
+
+    preflight_messages = _preflight_checks(teacher_specs, break_slots, max_one_per_day=max_one_per_day)
+    for message in preflight_messages:
+        logger.error("[PREFLIGHT] %s", message)
 
     solver = BreakSupervisionSolver(
         teachers=teacher_specs,
@@ -343,6 +432,8 @@ def generate_assignments(
         max_one_per_day=max_one_per_day,
         time_limit_s=time_limit,
         num_workers=num_workers,
+        band_penalty=band_penalty,
+        max_extra_duties=max_extra_duties,
     )
 
     result = solver.solve()
@@ -373,15 +464,36 @@ def generate_assignments(
     db.commit()
 
     logger.info(
-        "Aufsichtsplan erstellt: %s Aufsichten, max_dev=%s, total_dev=%s, daily_excess=%s, priority_cost=%s, Solver=%s (%.2fs).",
+        "Aufsichtsplan erstellt: %s Aufsichten, max_dev=%s, total_dev=%s, daily_excess=%s, band_violation=%s, shortfall=%s, priority_cost=%s, Solver=%s (%.2fs).",
         assignments_created,
         result.max_dev,
         result.total_dev,
         result.daily_excess,
+        result.band_violation,
+        result.total_shortfall,
         result.priority_cost,
         result.status,
         result.wall_time_seconds,
     )
+
+    if result.band_violation > 0:
+        logger.warning("Fairnessband verletzt: Summe der Band-Abweichungen=%s (Konfiguration SCHEDULER_FAIRNESS_BAND).", result.band_violation)
+
+    if result.daily_excess > 0:
+        logger.warning("Tageslimit überschritten: %s zusätzliche Aufsichten über 1/Tag.", result.daily_excess)
+
+    if result.total_shortfall > 0:
+        for (slot_id, floor_id), amount in sorted(result.shortfalls.items()):
+            slot = solver.slot_lookup.get(slot_id)
+            if not slot:
+                continue
+            logger.error(
+                "Unbesetzter Bedarf: %s Break %s Floor %s – fehlende Aufsichten %s.",
+                slot.date,
+                slot.break_index,
+                floor_id,
+                amount,
+            )
 
     if assignments_created == 0:
         _log_shortages(solver, floors_by_id)
