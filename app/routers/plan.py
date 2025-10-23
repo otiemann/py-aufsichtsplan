@@ -115,7 +115,7 @@ def build_week_grid(db: Session, start_date: date, breaks_per_day: int) -> List[
     return grid
 
 
-def week_counts(db: Session, start_date: date, end_date: date) -> List[Dict]:
+def week_counts(db: Session, start_date: date, end_date: date) -> tuple[list[Dict], int]:
     rows = (
         db.query(
             Teacher,

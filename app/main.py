@@ -114,7 +114,7 @@ async def download_backup():
         
         # Erstelle Backup-Dateinamen mit Zeitstempel
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_filename = f"vertretungsplan_backup_{timestamp}.db"
+        backup_filename = f"aufsichtsplan_backup_{timestamp}.db"
         
         return FileResponse(
             path=db_path,

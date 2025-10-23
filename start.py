@@ -21,12 +21,10 @@ def get_base_dir() -> str:
 
 
 def get_data_dir() -> str:
-	if os.name == "nt":
-		base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
-		path = os.path.join(base, "py-vertretungsplan")
+	if getattr(sys, "frozen", False):
+		path = os.path.dirname(os.path.abspath(sys.executable))
 	else:
-		base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-		path = os.path.join(base, "py-vertretungsplan")
+		path = os.path.dirname(os.path.abspath(__file__))
 	os.makedirs(path, exist_ok=True)
 	return path
 

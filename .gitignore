@@ -7,6 +7,8 @@ __pycache__/
 .venv/
 venv/
 ENV/
+venv_py313/
+venv_py311/
 
 # Build artifacts
 build/
@@ -40,3 +42,4 @@ GPU001.TXT
 activate_py313.sh
 GPU009.txt
 user_db_copy.db
+aufsichtsplan.db

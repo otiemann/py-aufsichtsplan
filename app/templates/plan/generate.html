@@ -28,11 +28,19 @@
     </thead>
     <tbody>
         {% for c in counts %}
-        <tr>
+        {% set reached_max = (c.target and c.count >= c.target) %}
+        <tr {% if reached_max %}style="background: #fff3cd;"{% endif %}>
             <td>{{ c.abbreviation }}</td>
             <td>{{ c.last_name }}</td>
             <td>{{ c.first_name }}</td>
-            <td>{{ c.count }}</td>
+            <td>
+                <span {% if reached_max %}style="background: #ffe0a3; padding: 0.1rem 0.4rem; border-radius: 0.4rem;"{% endif %}>
+                    {{ c.count }}
+                </span>
+                {% if c.target %}
+                    <small style="color: #777;">/ {{ c.target }}</small>
+                {% endif %}
+            </td>
         </tr>
         {% else %}
         <tr>
@@ -41,6 +49,12 @@
         {% endfor %}
     </tbody>
 </table>
+
+{% if total_assignments is defined %}
+<p style="margin-top: 0.5rem; color: #444;">
+    <strong>Summe der Aufsichten:</strong> {{ total_assignments }}
+</p>
+{% endif %}
 
 <h3>Export-Optionen</h3>
 <div style="display: flex; gap: 1rem; margin-top: 1rem;">

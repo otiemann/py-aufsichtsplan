@@ -119,7 +119,7 @@ Aktuell sind keine zusätzlichen Secrets erforderlich.
 
 ### Log-Dateien:
 - GitHub Actions Logs (online)
-- Lokale Update-Logs in `%LOCALAPPDATA%\py-vertretungsplan\`
+- Lokale Update-Logs in `%LOCALAPPDATA%\py-aufsichtsplan\`
 
 ## 🚨 Wichtige Hinweise
 
