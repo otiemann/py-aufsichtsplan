@@ -182,11 +182,11 @@
             <div class="download-section">
                 <h2>💾 Download</h2>
                 <p style="margin-bottom: 1.5rem;">Laden Sie die neueste Version für Windows herunter:</p>
-                <a href="https://github.com/otiemann/py-aufsichtsplan/releases" class="download-btn" id="download-btn">
+                <a href="./downloads/Aufsichtsplan.exe" class="download-btn" id="download-btn">
                     🖥️ Windows Download (EXE)
                 </a>
                 <div class="version-info">
-                    <p><strong>Aktuelle Version:</strong> <span id="current-version">Wird geladen...</span></p>
+                    <p><strong>Aktuelle Version:</strong> <span id="current-version">Neuester Build (main)</span></p>
                     <p><strong>Letzte Aktualisierung:</strong> <span id="last-updated">Wird geladen...</span></p>
                 </div>
             </div>
@@ -260,66 +260,13 @@
     </div>
 
     <script>
-        // Aktuelle Version von GitHub API laden (inkl. Prereleases)
-        async function loadVersionInfo() {
-            try {
-                // Alle Releases laden (auch Prereleases) und das neueste nehmen
-                const response = await fetch('https://api.github.com/repos/otiemann/py-aufsichtsplan/releases');
-                const releases = await response.json();
-                
-                if (!releases || releases.length === 0) {
-                    throw new Error('Keine Releases gefunden');
-                }
-                
-                // Das erste Release ist das neueste (GitHub sortiert automatisch)
-                const latestRelease = releases[0];
-
-                const version = latestRelease.tag_name || 'v0.2.18-beta';
-                const versionElement = document.getElementById('current-version');
-                
-                // Beta-Badge hinzufügen wenn es sich um eine Beta-Version handelt
-                if (version.includes('beta')) {
-                    versionElement.innerHTML = `${version} <span style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">BETA</span>`;
-                } else {
-                    versionElement.textContent = version;
-                }
-
-                if (latestRelease.published_at) {
-                    const date = new Date(latestRelease.published_at);
-                    document.getElementById('last-updated').textContent = date.toLocaleDateString('de-DE');
-                }
-
-                // Download-Link aktualisieren
-                const downloadBtn = document.getElementById('download-btn');
-                const exeAsset = latestRelease.assets?.find(asset => asset.name === 'Aufsichtsplan.exe');
-                if (exeAsset) {
-                    downloadBtn.href = exeAsset.browser_download_url;
-                    downloadBtn.textContent = '🖥️ Windows Download (EXE)';
-                    
-                    // Dateigröße anzeigen wenn verfügbar
-                    if (exeAsset.size) {
-                        const sizeMB = (exeAsset.size / 1024 / 1024).toFixed(1);
-                        downloadBtn.textContent += ` (${sizeMB} MB)`;
-                    }
-                } else {
-                    // Fallback: Link zu Releases-Seite wenn kein Asset gefunden
-                    downloadBtn.href = 'https://github.com/otiemann/py-aufsichtsplan/releases';
-                    downloadBtn.textContent = '📂 Zu den Releases';
-                }
-            } catch (error) {
-                console.error('Fehler beim Laden der Versionsinformationen:', error);
-                document.getElementById('current-version').textContent = 'v0.2.18-beta';
-                document.getElementById('last-updated').textContent = '19.11.2025';
-                
-                // Fallback Download-Link
-                const downloadBtn = document.getElementById('download-btn');
-                downloadBtn.href = 'https://github.com/otiemann/py-aufsichtsplan/releases';
-                downloadBtn.textContent = '📂 Zu den Releases';
-            }
-        }
-
-        // Beim Laden der Seite
-        document.addEventListener('DOMContentLoaded', loadVersionInfo);
+        // Einfacher Timestamp aus der GitHub Pages Build-Zeit anzeigen
+        document.addEventListener('DOMContentLoaded', () => {
+            const lastUpdated = document.getElementById('last-updated');
+            // Nutzt den Buildzeitstempel der generierten Seite (Pages setzt Last-Modified)
+            const updated = document.lastModified;
+            lastUpdated.textContent = new Date(updated).toLocaleDateString('de-DE');
+        });
     </script>
 </body>
 
