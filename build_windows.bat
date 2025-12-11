@@ -16,8 +16,24 @@ REM Clean dist
 if exist dist rmdir /s /q dist
 if exist build rmdir /s /q build
 
-REM Use spec file for consistent builds
-pyinstaller Aufsichtsplan.spec
+REM Use spec file for consistent builds, fallback to command-line parameters
+if exist "Aufsichtsplan.spec" (
+    echo Using spec file...
+    pyinstaller Aufsichtsplan.spec
+) else (
+    echo Using fallback build method...
+    pyinstaller --onefile --noconsole ^
+      --name Aufsichtsplan ^
+      --add-data "app/templates;app/templates" ^
+      --add-data "app/static;app/static" ^
+      --hidden-import uvicorn.workers.uvicorn_worker ^
+      --hidden-import uvicorn.lifespan.on ^
+      --hidden-import uvicorn.lifespan.off ^
+      --hidden-import uvicorn.protocols.websockets.auto ^
+      --hidden-import uvicorn.protocols.http.auto ^
+      --hidden-import uvicorn.loops.auto ^
+      start.py
+)
 
 echo Build abgeschlossen. EXE unter dist\Aufsichtsplan.exe
 endlocal

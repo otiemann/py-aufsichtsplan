@@ -33,8 +33,30 @@ jobs:
           pip install -r requirements.txt pyinstaller
 
       - name: Build executable via spec
-        run: pyinstaller Aufsichtsplan.spec
-        shell: cmd
+        run: |
+          # Clean previous builds
+          if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          
+          # Build EXE with fallback
+          if (Test-Path "Aufsichtsplan.spec") {
+            Write-Host "Using spec file..."
+            pyinstaller Aufsichtsplan.spec
+          } else {
+            Write-Host "Using fallback build method..."
+            pyinstaller --onefile --noconsole `
+              --name Aufsichtsplan `
+              --add-data "app/templates;app/templates" `
+              --add-data "app/static;app/static" `
+              --hidden-import uvicorn.workers.uvicorn_worker `
+              --hidden-import uvicorn.lifespan.on `
+              --hidden-import uvicorn.lifespan.off `
+              --hidden-import uvicorn.protocols.websockets.auto `
+              --hidden-import uvicorn.protocols.http.auto `
+              --hidden-import uvicorn.loops.auto `
+              start.py
+          }
+        shell: pwsh
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
