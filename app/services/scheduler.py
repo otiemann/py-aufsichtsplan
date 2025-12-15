@@ -420,11 +420,19 @@ def generate_assignments(
             BreakSupervisionSolver,
             TeacherSpec,
         )
-    except ModuleNotFoundError as exc:
-        logger.error(
-            "CP-SAT Scheduler nicht verfügbar: %s. Bitte ortools installieren (z.B. via 'pip install ortools').",
-            exc,
-        )
+    except (ModuleNotFoundError, ImportError) as exc:
+        message = str(exc)
+        if "cp_model_helper" in message or "DLL load failed" in message:
+            logger.error(
+                "CP-SAT Scheduler nicht verfügbar (OR-Tools native DLLs konnten nicht geladen werden): %s. "
+                "Unter Windows hilft oft die Installation des „Microsoft Visual C++ Redistributable (2015–2022)“ (x64).",
+                exc,
+            )
+        else:
+            logger.error(
+                "CP-SAT Scheduler nicht verfügbar: %s. Bitte ortools installieren/neu installieren (z.B. via 'pip install ortools').",
+                exc,
+            )
         return
 
     floors: List[Floor] = db.query(Floor).order_by(Floor.order_index, Floor.name).all()

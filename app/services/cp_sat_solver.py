@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import date
+import sys
 from typing import Dict, Iterable, List, Optional, Tuple
 
 try:
@@ -11,6 +12,20 @@ except ModuleNotFoundError as exc:  # pragma: no cover - import check
     raise ModuleNotFoundError(
         "Das Modul 'ortools' fehlt. Bitte 'pip install -r requirements.txt' oder 'pip install ortools' im Projekt-Venv ausführen."
     ) from exc
+except ImportError as exc:  # pragma: no cover - import check
+    base = (
+        "OR-Tools konnte nicht geladen werden (native Bibliotheken/DLLs fehlen oder sind inkompatibel). "
+        "Das betrifft insbesondere 'cp_model_helper'."
+    )
+    if sys.platform.startswith("win"):
+        hint = (
+            f"{base} Unter Windows hilft meist die Installation des "
+            "„Microsoft Visual C++ Redistributable (2015–2022)“ (x64) "
+            "oder ein neuer Download einer aktuellen Aufsichtsplan.exe."
+        )
+    else:
+        hint = f"{base} Bitte ortools neu installieren (z.B. via 'pip install --force-reinstall ortools')."
+    raise ImportError(hint) from exc
 
 logger = logging.getLogger(__name__)
 
