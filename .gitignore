@@ -14,6 +14,8 @@ venv_py311/
 build/
 dist/
 *.spec
+!Aufsichtsplan.spec
+!Aufsichtsplan-fixed.spec
 
 # OS files
 .DS_Store
