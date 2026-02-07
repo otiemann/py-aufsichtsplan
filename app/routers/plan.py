@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.requests import Request
 from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import and_, func, select
 from pydantic import BaseModel
@@ -175,6 +175,20 @@ def break_labels() -> List[str]:
     return ["0. Stunde", "2./3. Stunde", "4./5. Stunde", "6./7. Stunde"]
 
 
+def _day_label(day_offset: int) -> str:
+    labels = weekday_labels()
+    if 0 <= day_offset < len(labels):
+        return labels[day_offset]
+    return f"Tag {day_offset + 1}"
+
+
+def _break_label(break_index: int) -> str:
+    labels = break_labels()
+    if 1 <= break_index <= len(labels):
+        return labels[break_index - 1]
+    return f"Pause {break_index}"
+
+
 def build_week_grid(db: Session, start_date: date, breaks_per_day: int) -> List[List[List[str]]]:
     floors = db.query(Floor).order_by(Floor.order_index, Floor.name).all()
     end_date = start_date + timedelta(days=4)
@@ -262,6 +276,33 @@ def week_counts(db: Session, start_date: date, end_date: date) -> tuple[list[Dic
     return out, total_assignments
 
 
+def _teacher_option_value(teacher: Teacher) -> str:
+    return teacher.abbreviation or f"{teacher.last_name}, {teacher.first_name}"
+
+
+def build_teacher_options(teachers: List[Teacher]) -> List[Dict[str, Any]]:
+    options: List[Dict[str, Any]] = []
+    for teacher in teachers:
+        value = _teacher_option_value(teacher)
+        availability = {
+            f"{weekday}-{break_index}": teacher.is_available_for_supervision(weekday, break_index)
+            for weekday in range(5)
+            for break_index in range(1, 5)
+        }
+        options.append(
+            {
+                "id": teacher.id,
+                "abbreviation": teacher.abbreviation or "",
+                "display": (teacher.abbreviation + " – " if teacher.abbreviation else "")
+                + f"{teacher.last_name}, {teacher.first_name}",
+                "value": value,
+                "availability": availability,
+                "exempt": bool(teacher.exempt),
+            }
+        )
+    return options
+
+
 @router.get("/floors")
 async def floors_get(request: Request, db: Session = Depends(get_db)):
     floors = db.query(Floor).order_by(Floor.order_index, Floor.name).all()
@@ -310,16 +351,14 @@ async def generate_get(request: Request, db: Session = Depends(get_db)):
     bpd = 4
     grid = build_week_grid(db, period_start, bpd)
     counts, total_template_assignments = week_counts(db, period_start, template_end)
-    teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
-    teacher_options = [
-        {
-            "id": t.id,
-            "abbreviation": t.abbreviation or "",
-            "display": (t.abbreviation + " – " if t.abbreviation else "") + f"{t.last_name}, {t.first_name}",
-            "value": t.abbreviation or f"{t.last_name}, {t.first_name}",
-        }
-        for t in teachers
-    ]
+    teachers = (
+        db.query(Teacher)
+        .filter(Teacher.exempt == False)  # noqa: E712
+        .options(selectinload(Teacher.lessons))
+        .order_by(Teacher.last_name, Teacher.first_name)
+        .all()
+    )
+    teacher_options = build_teacher_options(teachers)
     teacher_options_json = json.dumps(teacher_options, ensure_ascii=False)
     return templates.TemplateResponse(
         "plan/generate.html",
@@ -373,16 +412,14 @@ async def generate_post(
         return response
     grid = build_week_grid(db, period_start, bpd)
     counts, total_template_assignments = week_counts(db, period_start, template_end)
-    teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
-    teacher_options = [
-        {
-            "id": t.id,
-            "abbreviation": t.abbreviation or "",
-            "display": (t.abbreviation + " – " if t.abbreviation else "") + f"{t.last_name}, {t.first_name}",
-            "value": t.abbreviation or f"{t.last_name}, {t.first_name}",
-        }
-        for t in teachers
-    ]
+    teachers = (
+        db.query(Teacher)
+        .filter(Teacher.exempt == False)  # noqa: E712
+        .options(selectinload(Teacher.lessons))
+        .order_by(Teacher.last_name, Teacher.first_name)
+        .all()
+    )
+    teacher_options = build_teacher_options(teachers)
     teacher_options_json = json.dumps(teacher_options, ensure_ascii=False)
     if created_total < 0:
         response = RedirectResponse(url="/plan/generate", status_code=303)
@@ -491,12 +528,142 @@ async def save_changes(request: SaveChangesRequest, db: Session = Depends(get_db
         teachers_by_name = {}
         
         # Erstelle Teacher-Lookup (Kürzel und vollständige Namen)
-        for teacher in db.query(Teacher).all():
+        all_teachers = (
+            db.query(Teacher)
+            .options(selectinload(Teacher.lessons), selectinload(Teacher.quota))
+            .all()
+        )
+        for teacher in all_teachers:
             if teacher.abbreviation:
                 teachers_by_name[teacher.abbreviation] = teacher
             teachers_by_name[f"{teacher.last_name}, {teacher.first_name}"] = teacher
             # Auch für den Fall, dass nur der Name verwendet wird
             teachers_by_name[teacher.last_name] = teacher
+
+        # Validierung (Wochen-Template): keine Doppelbelegung in derselben Pause
+        # und kein Überschreiten des Solls.
+        exempt_conflicts: List[str] = []
+        duplicate_slot_conflicts: List[str] = []
+        teacher_week_counts: Dict[int, int] = {}
+        seen_teacher_slot_keys: set[tuple[int, int, int]] = set()
+
+        for assignment_data in request.assignments:
+            day_offset = int(assignment_data.day)
+            break_index = int(assignment_data.break_index)
+            floor_name = (assignment_data.floor or "").strip() or "?"
+            if day_offset < 0 or day_offset > 4:
+                continue
+            if break_index < 1 or break_index > 4:
+                continue
+
+            for teacher_name in assignment_data.teachers or []:
+                teacher_key = (teacher_name or "").strip()
+                if not teacher_key:
+                    continue
+                teacher = teachers_by_name.get(teacher_key)
+                if not teacher:
+                    continue
+                if teacher.exempt:
+                    display_name = teacher.abbreviation or f"{teacher.last_name}, {teacher.first_name}"
+                    day_label = _day_label(day_offset)
+                    break_label = _break_label(break_index)
+                    exempt_conflicts.append(
+                        f"{display_name} ({day_label}, {break_label}, Stockwerk {floor_name})"
+                    )
+                    continue
+
+                teacher_slot_key = (day_offset, break_index, int(teacher.id))
+                if teacher_slot_key in seen_teacher_slot_keys:
+                    display_name = teacher.abbreviation or f"{teacher.last_name}, {teacher.first_name}"
+                    day_label = _day_label(day_offset)
+                    break_label = _break_label(break_index)
+                    duplicate_slot_conflicts.append(
+                        f"{display_name} ({day_label}, {break_label}, Stockwerk {floor_name})"
+                    )
+                else:
+                    seen_teacher_slot_keys.add(teacher_slot_key)
+
+                teacher_week_counts[int(teacher.id)] = teacher_week_counts.get(int(teacher.id), 0) + 1
+
+        quota_conflicts: List[str] = []
+        for teacher in all_teachers:
+            target = int(teacher.quota.target_duties or 0) if teacher.quota else 0
+            if target <= 0:
+                continue
+            current_count = teacher_week_counts.get(int(teacher.id), 0)
+            if current_count > target:
+                display_name = teacher.abbreviation or f"{teacher.last_name}, {teacher.first_name}"
+                quota_conflicts.append(f"{display_name} ({current_count}/{target})")
+
+        if exempt_conflicts or duplicate_slot_conflicts or quota_conflicts:
+            conflict_parts: List[str] = []
+            if exempt_conflicts:
+                preview = "; ".join(exempt_conflicts[:8])
+                suffix = " …" if len(exempt_conflicts) > 8 else ""
+                conflict_parts.append(
+                    "Lehrkraft ist als 'keine Aufsicht' markiert: " + preview + suffix
+                )
+            if duplicate_slot_conflicts:
+                preview = "; ".join(duplicate_slot_conflicts[:8])
+                suffix = " …" if len(duplicate_slot_conflicts) > 8 else ""
+                conflict_parts.append(
+                    "Doppelbelegung gleiche Pause: " + preview + suffix
+                )
+            if quota_conflicts:
+                preview = "; ".join(quota_conflicts[:8])
+                suffix = " …" if len(quota_conflicts) > 8 else ""
+                conflict_parts.append(
+                    "Soll überschritten: " + preview + suffix
+                )
+
+            raise HTTPException(
+                status_code=400,
+                detail="Ungültige manuelle Zuordnung. " + " | ".join(conflict_parts),
+            )
+
+        # Validierung: Manuelle Änderungen dürfen nur verfügbare Lehrkräfte einplanen.
+        invalid_assignments: List[str] = []
+        for week_offset in range(weeks):
+            for assignment_data in request.assignments:
+                day_offset = int(assignment_data.day)
+                break_index = int(assignment_data.break_index)
+                slot_date = period_start + timedelta(days=(week_offset * 7) + day_offset)
+
+                if slot_date > period_end:
+                    continue
+
+                if break_index < 1 or break_index > 4:
+                    continue
+
+                weekday = slot_date.weekday()
+                for teacher_name in assignment_data.teachers or []:
+                    teacher_key = (teacher_name or "").strip()
+                    if not teacher_key:
+                        continue
+                    teacher = teachers_by_name.get(teacher_key)
+                    if not teacher:
+                        continue
+                    if teacher.is_available_for_supervision(weekday, break_index):
+                        continue
+
+                    display_name = teacher.abbreviation or f"{teacher.last_name}, {teacher.first_name}"
+                    day_label = _day_label(day_offset)
+                    break_label = _break_label(break_index)
+                    invalid_assignments.append(
+                        f"{display_name} ({day_label}, {break_label}, {slot_date.strftime('%d.%m.%Y')})"
+                    )
+
+        if invalid_assignments:
+            preview = "; ".join(invalid_assignments[:8])
+            suffix = " …" if len(invalid_assignments) > 8 else ""
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Ungültige manuelle Zuordnung: Lehrkraft ist im Ziel-Slot nicht verfügbar "
+                    "(Anwesenheit/Unterricht vor oder nach der Pause fehlt). "
+                    f"Beispiele: {preview}{suffix}"
+                ),
+            )
         
         # Fehlende Floors einmalig anlegen (falls z.B. umbenannt/neu).
         for assignment_data in request.assignments:
@@ -593,6 +760,9 @@ async def save_changes(request: SaveChangesRequest, db: Session = Depends(get_db
             "period_end": period_end.isoformat(),
         })
         
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         print(f"[ERROR] Fehler beim Speichern der manuellen Änderungen: {e}")

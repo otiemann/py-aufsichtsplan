@@ -13,7 +13,7 @@
 {% include 'plan/week_grid.html' %}
 
 <h3>Aufsichten je Lehrkraft (pro Woche)</h3>
-<table>
+<table class="teacher-counts-table">
     <thead>
         <tr>
             <th>Kürzel</th>
@@ -24,13 +24,14 @@
     </thead>
     <tbody>
         {% for c in counts %}
+        {% set teacher_key = c.abbreviation if c.abbreviation else c.last_name ~ ', ' ~ c.first_name %}
         {% set reached_max = (c.target and c.count >= c.target) %}
-        <tr {% if reached_max %}style="background: #fff3cd;"{% endif %}>
+        <tr class="teacher-count-row" data-teacher-key="{{ teacher_key }}" data-target="{{ c.target or 0 }}" {% if reached_max %}style="background: #fff3cd;"{% endif %}>
             <td>{{ c.abbreviation }}</td>
             <td>{{ c.last_name }}</td>
             <td>{{ c.first_name }}</td>
             <td>
-                <span {% if reached_max %}style="background: #ffe0a3; padding: 0.1rem 0.4rem; border-radius: 0.4rem;"{% endif %}>
+                <span class="teacher-count-value" {% if reached_max %}style="background: #ffe0a3; padding: 0.1rem 0.4rem; border-radius: 0.4rem;"{% endif %}>
                     {{ c.count }}
                 </span>
                 {% if c.target %}
@@ -48,9 +49,9 @@
 
 {% if total_assignments is defined %}
 <p style="margin-top: 0.5rem; color: #444;">
-    <strong>Summe der Aufsichten:</strong> {{ total_assignments }} pro Woche
+    <strong>Summe der Aufsichten:</strong> <span id="weeklyTotalAssignments">{{ total_assignments }}</span> pro Woche
     {% if total_assignments_period is defined %}
-        <br><strong>Summe im Zeitraum:</strong> {{ total_assignments_period }}
+        <br><strong>Summe im Zeitraum:</strong> <span id="periodTotalAssignments">{{ total_assignments_period }}</span>
     {% endif %}
 </p>
 {% endif %}
