@@ -15,21 +15,20 @@ Das war's! GitHub Actions übernimmt den Rest automatisch.
 ## 🔄 Automatisierte Systeme
 
 ### 1. GitHub Actions (Release Pipeline)
-- **Datei**: `.github/workflows/release.yml`
-- **Trigger**: Git Tags mit Pattern `v*` (z.B. `v1.0.0`, `v1.2.3`)
+- **Datei**: `.github/workflows/pages.yml`
+- **Trigger**: Veröffentlichtes GitHub Release (`release.published`)
 - **Funktionen**:
   - Automatischer Windows EXE Build
-  - Release-Erstellung auf GitHub
-  - Upload der EXE-Datei
+  - Upload/Aktualisierung der Release-Assets (`Aufsichtsplan.exe`, `checksums.txt`, `version.json`)
   - Generierung von Checksums
-  - Version-JSON für Update-System
+  - Deployment von GitHub Pages inkl. Download-Dateien
 
 ### 2. GitHub Pages (Website)
 - **Dateien**: 
   - `.github/workflows/pages.yml`
   - `docs/index.html`
   - `docs/_config.yml`
-- **Trigger**: Push zu `main` Branch
+- **Trigger**: Im selben Release-Workflow nach erfolgreichem EXE-Build
 - **URL**: `https://olivertiemann.github.io/py-aufsichtsplan/`
 - **Funktionen**:
   - Automatische Website-Updates
@@ -65,12 +64,16 @@ git commit -m "Release v1.0.1: Bug fixes and improvements"
 git tag v1.0.1
 git push origin main
 git push origin v1.0.1
+
+# Release veröffentlichen (Web-UI oder gh CLI)
+# Beispiel mit gh:
+gh release create v1.0.1 --title "v1.0.1" --notes "Release notes"
 ```
 
 ### Schritt 3: Automatischer Build
-- GitHub Actions startet automatisch
+- GitHub Actions startet beim Veröffentlichen des Releases
 - Windows EXE wird gebaut
-- Release wird auf GitHub erstellt
+- Assets im bestehenden Release werden aktualisiert
 - GitHub Pages wird aktualisiert
 
 ### Schritt 4: Verifizierung
@@ -101,7 +104,7 @@ Aktuell sind keine zusätzlichen Secrets erforderlich.
 
 ### GitHub Pages lädt nicht
 - Prüfen Sie den Pages Workflow
-- Jekyll Build-Fehler in den Logs
+- Kopier-/Artifact-Fehler im Job `Deploy GitHub Pages`
 - DNS-Propagation kann bis zu 24h dauern
 
 ### Update-System funktioniert nicht

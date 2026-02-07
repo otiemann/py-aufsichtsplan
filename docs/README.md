@@ -15,7 +15,7 @@ Professionelle Software für die Pausenaufsichtsplanung an Schulen.
 
 [**→ Neueste Version herunterladen**](./downloads/Aufsichtsplan.exe)
 
-Die Datei wird bei jedem Push auf `main` automatisch per GitHub Actions gebaut (PyInstaller) und hier über GitHub Pages bereitgestellt. Eine SHA256-Prüfsumme liegt in `./downloads/checksums.txt` auf derselben Seite.
+Die Datei wird bei jedem **veröffentlichten GitHub Release** automatisch per GitHub Actions gebaut (PyInstaller), als Release-Asset hochgeladen und hier über GitHub Pages bereitgestellt. Eine SHA256-Prüfsumme liegt in `./downloads/checksums.txt` auf derselben Seite.
 
 ## 📦 Installation
 
