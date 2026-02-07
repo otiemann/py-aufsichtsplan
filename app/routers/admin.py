@@ -1,6 +1,7 @@
 from typing import List, Optional, Union
 import os
 import tempfile
+import re
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.requests import Request
@@ -18,10 +19,76 @@ from ..db_config import (
     read_database_path_config,
     write_database_path_config,
 )
-from ..models import Teacher, TeacherQuota, Floor
+from ..models import Teacher, TeacherQuota, Floor, TeacherLesson
 from ..services.gpu_import import import_gpu_file, clear_lessons, get_lesson_stats, update_attendance_from_lessons
 
 router = APIRouter()
+
+
+WEEKDAY_ITEMS = [
+    ("Mo", 0),
+    ("Di", 1),
+    ("Mi", 2),
+    ("Do", 3),
+    ("Fr", 4),
+]
+
+
+def _parse_hour_token(token: str) -> List[int]:
+    """Parst einen einzelnen Stunden-Token (z.B. '3' oder '2-5')."""
+    token = (token or "").strip()
+    if not token:
+        return []
+
+    if "-" in token:
+        parts = token.split("-", 1)
+        if len(parts) != 2 or not parts[0].strip().isdigit() or not parts[1].strip().isdigit():
+            raise ValueError(f"Ungültiger Bereich '{token}'. Erlaubt sind z.B. 2-5 oder 7.")
+        start = int(parts[0].strip())
+        end = int(parts[1].strip())
+        if start > end:
+            raise ValueError(f"Ungültiger Bereich '{token}': Start muss <= Ende sein.")
+        if start < 1 or end > 20:
+            raise ValueError(f"Ungültiger Bereich '{token}': Stunden müssen zwischen 1 und 20 liegen.")
+        return list(range(start, end + 1))
+
+    if not token.isdigit():
+        raise ValueError(f"Ungültige Stunde '{token}'. Erlaubt sind Zahlen oder Bereiche (z.B. 3 oder 2-5).")
+
+    value = int(token)
+    if value < 1 or value > 20:
+        raise ValueError(f"Ungültige Stunde '{token}': Stunden müssen zwischen 1 und 20 liegen.")
+    return [value]
+
+
+def parse_hours_input(raw_value: str) -> List[int]:
+    """Parst Stunden-Eingabe je Tag (z.B. '1,2,5' oder '1-3 7')."""
+    raw = (raw_value or "").strip()
+    if not raw:
+        return []
+
+    tokens = [token for token in re.split(r"[,\s;]+", raw) if token]
+    hours: set[int] = set()
+    for token in tokens:
+        for hour in _parse_hour_token(token):
+            hours.add(hour)
+    return sorted(hours)
+
+
+def parse_checkbox_hours(values: List[str]) -> List[int]:
+    """Parst Stunden aus Checkbox-Werten (mehrfaches Form-Feld)."""
+    hours: set[int] = set()
+    for raw in values:
+        token = (raw or "").strip()
+        if not token:
+            continue
+        if not token.isdigit():
+            raise ValueError(f"Ungültige Stunde '{token}'.")
+        hour = int(token)
+        if hour < 1 or hour > 20:
+            raise ValueError(f"Ungültige Stunde '{token}': Stunden müssen zwischen 1 und 20 liegen.")
+        hours.add(hour)
+    return sorted(hours)
 
 # Templates aus main übernehmen, damit alle Router identische Loader nutzen
 try:
@@ -69,7 +136,26 @@ async def admin_index(request: Request, db: Session = Depends(get_db)):
 async def admin_teachers(request: Request, db: Session = Depends(get_db)):
     teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
     floors = db.query(Floor).order_by(Floor.order_index, Floor.name).all()
-    return templates.TemplateResponse("admin/teachers.html", {"request": request, "teachers": teachers, "floors": floors})
+    lessons_editor_selected = {}
+    for teacher in teachers:
+        by_day = {}
+        for day_label, day_index in WEEKDAY_ITEMS:
+            day_hours = sorted({
+                int(lesson.hour)
+                for lesson in (teacher.lessons or [])
+                if int(lesson.weekday) == day_index and 1 <= int(lesson.hour) <= 20
+            })
+            by_day[day_label] = day_hours
+        lessons_editor_selected[int(teacher.id)] = by_day
+    return templates.TemplateResponse(
+        "admin/teachers.html",
+        {
+            "request": request,
+            "teachers": teachers,
+            "floors": floors,
+            "lessons_editor_selected": lessons_editor_selected,
+        },
+    )
 
 
 @router.post("/teachers/upload")
@@ -321,6 +407,74 @@ async def bulk_set_attendance(
     days_text = ", ".join(bulk_days) if bulk_days else "Keine Tage"
     response = RedirectResponse(url="/admin/teachers", status_code=303)
     response.set_cookie("flash", f"Anwesenheitstage für {len(teachers)} Lehrkräfte gesetzt: {days_text}", max_age=5)
+    return response
+
+
+@router.post("/teachers/set-lessons")
+async def set_teacher_lessons(
+    request: Request,
+    teacher_id: int = Form(...),
+    lesson_mo: str = Form(""),
+    lesson_di: str = Form(""),
+    lesson_mi: str = Form(""),
+    lesson_do: str = Form(""),
+    lesson_fr: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Setzt den Stundenplan (Mo-Fr, Stunde 1-20) für eine Lehrkraft."""
+    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+    if not teacher:
+        response = RedirectResponse(url="/admin/teachers", status_code=303)
+        response.set_cookie("flash", "Lehrkraft nicht gefunden", max_age=5)
+        return response
+
+    day_inputs = [
+        ("Mo", 0, "mo", lesson_mo),
+        ("Di", 1, "di", lesson_di),
+        ("Mi", 2, "mi", lesson_mi),
+        ("Do", 3, "do", lesson_do),
+        ("Fr", 4, "fr", lesson_fr),
+    ]
+
+    form_data = await request.form()
+
+    parsed_by_day: dict[int, List[int]] = {}
+    errors: List[str] = []
+    for day_label, day_index, day_key, raw_fallback in day_inputs:
+        try:
+            checkbox_values = form_data.getlist(f"lesson_{day_key}_hours")
+            if checkbox_values:
+                parsed_by_day[day_index] = parse_checkbox_hours(checkbox_values)
+            else:
+                # Fallback kompatibel zum bisherigen Textfeld-Format.
+                parsed_by_day[day_index] = parse_hours_input(raw_fallback)
+        except ValueError as exc:
+            errors.append(f"{day_label}: {exc}")
+
+    if errors:
+        response = RedirectResponse(url="/admin/teachers", status_code=303)
+        response.set_cookie("flash", "Stundenplan nicht gespeichert. " + " | ".join(errors[:3]), max_age=8)
+        return response
+
+    # Ersetze alle vorhandenen Lessons der Lehrkraft.
+    db.query(TeacherLesson).filter(TeacherLesson.teacher_id == teacher.id).delete(synchronize_session=False)
+
+    total_lessons = 0
+    for day_index, hours in parsed_by_day.items():
+        for hour in hours:
+            db.add(TeacherLesson(teacher_id=teacher.id, weekday=day_index, hour=hour))
+            total_lessons += 1
+
+    # Anwesenheit künftig aus Stundenplan ableiten.
+    teacher.attendance_days = 31
+    db.commit()
+
+    response = RedirectResponse(url="/admin/teachers", status_code=303)
+    response.set_cookie(
+        "flash",
+        f"Stundenplan für {teacher.last_name} gespeichert ({total_lessons} Stunden). Anwesenheit wird aus Stundenplan abgeleitet.",
+        max_age=8,
+    )
     return response
 
 

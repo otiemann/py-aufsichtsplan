@@ -51,6 +51,11 @@
 </style>
 
 <h2>Lehrkräfte</h2>
+<div style="margin: 0.4rem 0 0.9rem 0; padding: 0.6rem 0.75rem; background: #f8fbff; border: 1px solid #d9e7f7; border-radius: 6px; color: #35506b; font-size: 0.9rem;">
+    <strong>Neu:</strong> Der importierte Stundenplan kann pro Lehrkraft direkt bearbeitet werden
+    über <em>„Stundenplan bearbeiten“</em> in der Spalte <em>Unterrichtsstunden</em>.
+    Nach dem Speichern werden die Anwesenheitstage automatisch aus diesem Stundenplan abgeleitet.
+</div>
 
 <div class="toolbar">
     <div class="filter-row">
@@ -167,7 +172,7 @@
                         </form>
                     </div>
                 </td>
-                <td style="font-size: 0.7em; max-width: 200px;">
+                <td style="font-size: 0.7em; max-width: 360px;">
                     {% if t.lessons %} {% set lesson_count = t.lessons|length %}
                     <div style="color: #666; margin-bottom: 3px;">
                         <strong>{{ lesson_count }} Stunden</strong>
@@ -183,6 +188,49 @@
                     </div>
                     {% else %}
                     <span style="color: #999; font-style: italic;">Keine Stunden</span> {% endif %}
+
+                    <details style="margin-top: 8px; border: 1px solid #d9e7f7; border-radius: 6px; padding: 6px; background: #f8fbff;">
+                        <summary style="cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #1f5b9a;">✏️ Stundenplan bearbeiten</summary>
+                        <form method="post" action="/admin/teachers/set-lessons" style="margin-top: 8px;">
+                            <input type="hidden" name="teacher_id" value="{{ t.id }}">
+
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                {% set selected_days = lessons_editor_selected[t.id] if lessons_editor_selected and t.id in lessons_editor_selected else {} %}
+                                {% for day_label, day_key in [('Mo','mo'), ('Di','di'), ('Mi','mi'), ('Do','do'), ('Fr','fr')] %}
+                                {% set selected_hours = selected_days[day_label] if selected_days and day_label in selected_days else [] %}
+                                <div style="padding: 5px; border: 1px solid #e2ebf5; border-radius: 6px; background: #fff;">
+                                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 4px;">
+                                        <strong style="font-size: 0.78rem;">{{ day_label }}</strong>
+                                        <span style="font-size: 0.68rem; color: #5f6b7a;">Stunde 1–20</span>
+                                    </div>
+
+                                    <div style="display:grid; grid-template-columns: repeat(10, minmax(0,1fr)); gap: 2px 4px;">
+                                        {% for hour in range(1, 21) %}
+                                        <label style="display:inline-flex; align-items:center; gap:2px; font-size:0.66rem; white-space:nowrap;">
+                                            <input
+                                                type="checkbox"
+                                                name="lesson_{{ day_key }}_hours"
+                                                value="{{ hour }}"
+                                                {% if hour in selected_hours %}checked{% endif %}
+                                                style="margin:0;"
+                                            >
+                                            {{ hour }}
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+
+                            <div style="margin-top: 6px; color: #5f6b7a; font-size: 0.72rem;">
+                                Einfach die Stunden anklicken, in denen die Lehrkraft Unterricht hat. Nicht angehakt = kein Unterricht.
+                            </div>
+
+                            <div style="margin-top: 8px;">
+                                <button type="submit" style="font-size: 0.8rem;">💾 Stundenplan speichern</button>
+                            </div>
+                        </form>
+                    </details>
                 </td>
                 <td>
                     <form method="post" action="/admin/teachers/delete" style="display:inline;" onsubmit="return confirm('Lehrkraft {{ t.first_name }} {{ t.last_name }} wirklich löschen?');">
