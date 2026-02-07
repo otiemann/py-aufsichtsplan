@@ -273,6 +273,62 @@
         return { counts, totalAssignments };
     }
 
+    function getTeacherCountFilterMode() {
+        const filterSelect = document.getElementById('teacherCountFilter');
+        return filterSelect ? (filterSelect.value || 'all') : 'all';
+    }
+
+    function getTeacherCountFromRow(row) {
+        const countValueElement = row.querySelector('.teacher-count-value');
+        const parsed = Number((countValueElement?.textContent || '').trim());
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function shouldShowTeacherCountRow(row, filterMode) {
+        if (filterMode === 'all') {
+            return true;
+        }
+
+        const target = Number(row.dataset.target || 0);
+        const count = getTeacherCountFromRow(row);
+
+        // "Soll erfüllt"/"unter Soll" ist nur für Lehrkräfte mit gesetztem Soll sinnvoll.
+        if (!(target > 0)) {
+            return false;
+        }
+
+        if (filterMode === 'reached') {
+            return count >= target;
+        }
+        if (filterMode === 'under') {
+            return count < target;
+        }
+        return true;
+    }
+
+    function applyTeacherCountFilter() {
+        const rows = Array.from(document.querySelectorAll('.teacher-count-row'));
+        if (!rows.length) {
+            return;
+        }
+
+        const filterMode = getTeacherCountFilterMode();
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const visible = shouldShowTeacherCountRow(row, filterMode);
+            row.style.display = visible ? '' : 'none';
+            if (visible) {
+                visibleCount += 1;
+            }
+        });
+
+        const summary = document.getElementById('teacherCountFilterSummary');
+        if (summary) {
+            summary.textContent = `${visibleCount} von ${rows.length} sichtbar`;
+        }
+    }
+
     function getTeacherTarget(teacherValue) {
         const row = document.querySelector(`.teacher-count-row[data-teacher-key="${teacherValue}"]`);
         if (!row) {
@@ -340,6 +396,8 @@
         if (periodTotalElement) {
             periodTotalElement.textContent = String(totalAssignments * planPeriodWeeks);
         }
+
+        applyTeacherCountFilter();
     }
 
     function removePlaceholder(container) {
@@ -1218,6 +1276,13 @@
     function initializeDragAndDrop() {
         updateTeacherCountsTable();
         updateSaveButton();
+
+        const teacherCountFilter = document.getElementById('teacherCountFilter');
+        if (teacherCountFilter && !teacherCountFilter.dataset.bound) {
+            teacherCountFilter.addEventListener('change', applyTeacherCountFilter);
+            teacherCountFilter.dataset.bound = '1';
+        }
+        applyTeacherCountFilter();
     }
 
     // Initialisiere nach dem Laden

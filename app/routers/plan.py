@@ -272,6 +272,7 @@ def week_counts(db: Session, start_date: date, end_date: date) -> tuple[list[Dic
             "last_name": t.last_name,
             "count": count_int,
             "target": int(target or 0),
+            "exempt": bool(t.exempt),
         })
     return out, total_assignments
 
