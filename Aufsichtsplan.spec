@@ -32,6 +32,17 @@ hiddenimports += ['uvicorn.protocols.websockets.auto', 'uvicorn.protocols.http.a
 hiddenimports += ['uvicorn.loops.auto']
 hiddenimports += ['ortools.sat.python.cp_model_helper']
 
+# Desktop-WebView (pywebview)
+try:
+    hiddenimports += collect_submodules('webview')
+except Exception:
+    pass
+try:
+    hiddenimports += collect_submodules('pythonnet')
+    hiddenimports += ['clr']
+except Exception:
+    pass
+
 # Sammelt alle benötigten nativen Bibliotheken aus ortools (inkl. cp_model_helper)
 binaries = collect_dynamic_libs('ortools')
 

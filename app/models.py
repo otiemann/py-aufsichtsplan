@@ -238,3 +238,10 @@ class TeacherLesson(Base):
     __table_args__ = (
         Index("ix_teacher_lesson_weekday_hour", "teacher_id", "weekday", "hour"),
     )
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(String(500), nullable=False)

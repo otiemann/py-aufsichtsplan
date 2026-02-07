@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Explizit Python 3.13 venv verwenden (neueste verfügbare Version)
-VENV_DIR="venv_py313"
+# Explizit Python 3.12 venv verwenden (OR-Tools Kompatibilität)
+VENV_DIR="venv_py312"
 
 # Prüfen ob venv existiert, ansonsten erstellen
 if [ ! -d "$VENV_DIR" ]; then
-    echo "Erstelle Python 3.13 venv..."
-    /opt/homebrew/bin/python3.13 -m venv "$VENV_DIR"
+    echo "Erstelle Python 3.12 venv..."
+    /opt/homebrew/bin/python3.12 -m venv "$VENV_DIR"
 fi
 
 # Venv aktivieren

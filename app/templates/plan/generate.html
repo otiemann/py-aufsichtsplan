@@ -1,22 +1,48 @@
 {% extends "base.html" %} {% block content %}
 <h2>Plan generieren und anzeigen</h2>
 
-<div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #27ae60;">
-    <form method="post" action="/plan/generate" style="margin: 0;">
-        <button type="submit" style="padding: 1rem 2rem; font-size: 1.2rem; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-            🔄 Plan erzeugen
-        </button>
-        <div style="margin-top: 0.8rem; color: #666; font-size: 0.95rem;">
-            Generiert automatisch Aufsichtspläne für Montag bis Freitag mit 4 Pausen pro Tag<br>
-            <strong>Hinweis:</strong> Erzeugt einen neuen Plan und überschreibt den aktuellen Plan.
+<div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #ddd;">
+    <h3 style="margin: 0 0 0.75rem 0;">Zeitraum</h3>
+    <form method="post" action="/plan/period" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; margin: 0;">
+        <div>
+            <label for="start_date"><strong>Start (Montag)</strong></label><br>
+            <input id="start_date" name="start_date" type="date" value="{{ period_start_iso }}" required>
+        </div>
+        <div>
+            <label for="weeks"><strong>Anzahl Wochen</strong></label><br>
+            <select id="weeks" name="weeks">
+                {% for w in range(1, 13) %}
+                <option value="{{ w }}" {% if period_weeks == w %}selected{% endif %}>{{ w }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button type="submit" style="background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                💾 Zeitraum speichern
+            </button>
+        </div>
+        <div style="color: #555; font-size: 0.95rem;">
+            <strong>Gültig:</strong> {{ period_start_label }} bis {{ period_end_label }} ({{ period_weeks }} Wochen)
         </div>
     </form>
 </div>
 
-<h3>Pausenaufsichtsplan</h3>
+<div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #27ae60;">
+    <form method="post" action="/plan/generate" style="margin: 0;">
+        <button type="submit" style="padding: 1rem 2rem; font-size: 1.2rem; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            🔄 Plan für Zeitraum erzeugen
+        </button>
+        <div style="margin-top: 0.8rem; color: #666; font-size: 0.95rem;">
+            Erzeugt einen Wochenplan (Mo–Fr) und übernimmt ihn identisch für den gesamten Zeitraum.<br>
+            <strong>Hinweis:</strong> Erzeugt einen neuen Plan und überschreibt den aktuellen Zeitraum-Plan.
+        </div>
+    </form>
+</div>
+
+<h3>Pausenaufsichtsplan (Wochenplan)</h3>
 {% include "plan/week_grid.html" %}
 
-<h3>Aufsichten pro Lehrkraft</h3>
+<h3>Aufsichten pro Lehrkraft (pro Woche)</h3>
 <table>
     <thead>
         <tr>
@@ -52,7 +78,10 @@
 
 {% if total_assignments is defined %}
 <p style="margin-top: 0.5rem; color: #444;">
-    <strong>Summe der Aufsichten:</strong> {{ total_assignments }}
+    <strong>Summe der Aufsichten:</strong> {{ total_assignments }} pro Woche
+    {% if total_assignments_period is defined %}
+        <br><strong>Summe im Zeitraum:</strong> {{ total_assignments_period }}
+    {% endif %}
 </p>
 {% endif %}
 

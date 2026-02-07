@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -19,13 +20,23 @@ if not _db_path:
 	candidate_path = os.path.join(data_dir, target_filename)
 
 	if not os.path.exists(candidate_path):
-		legacy_names = [
-			os.path.join(data_dir, "vertretungsplan.db"),
-		]
-		for legacy_path in legacy_names:
+		legacy_paths = [os.path.join(data_dir, "vertretungsplan.db")]
+		# Migration: ältere Versionen haben die DB ggf. direkt neben der EXE abgelegt.
+		# Auf gemanagten Rechnern ist das Verzeichnis oft nicht beschreibbar – daher versuchen wir zu kopieren.
+		if getattr(sys, "frozen", False):
+			exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+			if os.path.abspath(exe_dir) != os.path.abspath(data_dir):
+				legacy_paths.extend(
+					[
+						os.path.join(exe_dir, target_filename),
+						os.path.join(exe_dir, "vertretungsplan.db"),
+					]
+				)
+
+		for legacy_path in legacy_paths:
 			if os.path.exists(legacy_path):
 				try:
-					os.replace(legacy_path, candidate_path)
+					shutil.copy2(legacy_path, candidate_path)
 				except OSError:
 					candidate_path = legacy_path
 				break

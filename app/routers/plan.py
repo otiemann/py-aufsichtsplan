@@ -9,12 +9,13 @@ from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.requests import Request
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy.exc import OperationalError
+from sqlalchemy import and_, func, select
 from pydantic import BaseModel
 
-from ..database import get_db
-from ..models import Floor, DutySlot, Assignment, Teacher
-from ..services.scheduler import generate_assignments
+from ..database import get_db, Base, engine
+from ..models import Floor, DutySlot, Assignment, Teacher, AppSetting, TeacherLesson
+from ..services.scheduler import generate_repeating_period_assignments
 from ..services.pdf_export import generate_pdf, generate_pdf_by_floor
 from ..services.gpu009_export import generate_gpu009
 
@@ -45,10 +46,125 @@ def monday_of_week(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
-def current_week_range() -> tuple[date, date]:
-    start = monday_of_week(date.today())
-    end = start + timedelta(days=4)
-    return start, end
+PLAN_PERIOD_START_KEY = "plan_period_start"
+PLAN_PERIOD_WEEKS_KEY = "plan_period_weeks"
+DEFAULT_PLAN_WEEKS = 6
+
+
+def _get_setting(db: Session, key: str) -> Optional[str]:
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == key).one_or_none()
+        return row.value if row else None
+    except OperationalError:
+        # Tabelle fehlt (z.B. alte DB). Nachziehen und Default verwenden.
+        try:
+            # Rollback to clear failed session state before re-querying.
+            db.rollback()
+            Base.metadata.create_all(bind=engine)
+            row = db.query(AppSetting).filter(AppSetting.key == key).one_or_none()
+            return row.value if row else None
+        except Exception:
+            return None
+
+
+def _set_setting(db: Session, key: str, value: str) -> None:
+    row = db.query(AppSetting).filter(AppSetting.key == key).one_or_none()
+    if row:
+        row.value = value
+    else:
+        db.add(AppSetting(key=key, value=value))
+    db.commit()
+
+
+def normalize_lesson_weekdays(db: Session) -> bool:
+    """Normalisiert TeacherLesson.weekday auf 0=Mo..4=Fr, falls alte Daten 1..5 verwenden."""
+    stats = db.query(
+        func.min(TeacherLesson.weekday),
+        func.max(TeacherLesson.weekday),
+        func.count(TeacherLesson.weekday),
+    ).one()
+    if not stats:
+        return False
+    min_wd, max_wd, total = stats
+    if total == 0:
+        return False
+    zero_based = db.query(TeacherLesson).filter(TeacherLesson.weekday.between(0, 4)).count()
+    one_based = db.query(TeacherLesson).filter(TeacherLesson.weekday.between(1, 5)).count()
+    # Shift nur, wenn keine 0-basierten Werte existieren, aber 1-basierte vorhanden sind.
+    if zero_based == 0 and one_based > 0 and min_wd is not None and max_wd is not None and max_wd <= 5 and min_wd >= 1:
+        db.query(TeacherLesson).update({TeacherLesson.weekday: TeacherLesson.weekday - 1})
+        db.commit()
+        return True
+    return False
+
+
+def check_scheduler_available() -> Optional[str]:
+    """Prüft ob OR-Tools (CP-SAT) verfügbar ist. Gibt Fehlermeldung zurück, falls nicht."""
+    try:
+        from ortools.sat.python import cp_model  # noqa: F401
+        return None
+    except Exception as exc:  # pragma: no cover - runtime env check
+        return str(exc)
+
+
+def get_planning_period(db: Session) -> tuple[date, date, int]:
+    raw_start = _get_setting(db, PLAN_PERIOD_START_KEY)
+    raw_weeks = _get_setting(db, PLAN_PERIOD_WEEKS_KEY)
+
+    today = date.today()
+    default_start = monday_of_week(today)
+    if today.weekday() >= 5:
+        default_start = default_start + timedelta(days=7)
+
+    start = default_start
+    if raw_start:
+        try:
+            start = datetime.fromisoformat(raw_start).date()
+        except ValueError:
+            start = default_start
+
+    weeks = DEFAULT_PLAN_WEEKS
+    if raw_weeks:
+        try:
+            weeks = int(raw_weeks)
+        except ValueError:
+            weeks = DEFAULT_PLAN_WEEKS
+    weeks = min(12, max(1, weeks))
+
+    start = monday_of_week(start)
+    end = start + timedelta(days=(weeks * 7) - 1)
+    return start, end, weeks
+
+
+@router.post("/period")
+async def set_planning_period(
+    start_date: str = Form(...),
+    weeks: int = Form(DEFAULT_PLAN_WEEKS),
+    db: Session = Depends(get_db),
+):
+    try:
+        parsed = datetime.fromisoformat(start_date).date()
+    except ValueError:
+        response = RedirectResponse(url="/plan/generate", status_code=303)
+        response.set_cookie("flash", "Ungültiges Startdatum – bitte ein Datum auswählen.")
+        return response
+
+    weeks = min(12, max(1, int(weeks)))
+
+    normalized = monday_of_week(parsed)
+    _set_setting(db, PLAN_PERIOD_START_KEY, normalized.isoformat())
+    _set_setting(db, PLAN_PERIOD_WEEKS_KEY, str(weeks))
+
+    suffix = ""
+    if normalized != parsed:
+        suffix = " (auf Montag korrigiert)"
+
+    response = RedirectResponse(url="/plan/generate", status_code=303)
+    response.set_cookie(
+        "flash",
+        f"Zeitraum gespeichert: {weeks} Wochen ab {normalized.strftime('%d.%m.%Y')}{suffix}.",
+    )
+    return response
 
 
 def weekday_labels() -> List[str]:
@@ -189,10 +305,11 @@ async def floors_delete(floor_id: int = Form(...), db: Session = Depends(get_db)
 
 @router.get("/generate")
 async def generate_get(request: Request, db: Session = Depends(get_db)):
-    start_date, end_date = current_week_range()
+    period_start, period_end, weeks = get_planning_period(db)
+    template_end = period_start + timedelta(days=4)
     bpd = 4
-    grid = build_week_grid(db, start_date, bpd)
-    counts, total_assignments = week_counts(db, start_date, end_date)
+    grid = build_week_grid(db, period_start, bpd)
+    counts, total_template_assignments = week_counts(db, period_start, template_end)
     teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
     teacher_options = [
         {
@@ -208,12 +325,17 @@ async def generate_get(request: Request, db: Session = Depends(get_db)):
         "plan/generate.html",
         {
             "request": request,
+            "period_start_iso": period_start.isoformat(),
+            "period_start_label": period_start.strftime("%d.%m.%Y"),
+            "period_end_label": period_end.strftime("%d.%m.%Y"),
+            "period_weeks": weeks,
             "day_labels": weekday_labels(),
             "break_labels": break_labels(),
             "breaks_per_day": bpd,
             "grid": grid,
             "counts": counts,
-            "total_assignments": total_assignments,
+            "total_assignments": total_template_assignments,
+            "total_assignments_period": total_template_assignments * weeks,
             "teacher_options_json": teacher_options_json,
         },
     )
@@ -224,11 +346,33 @@ async def generate_post(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    start_date, end_date = current_week_range()
+    ortools_error = check_scheduler_available()
+    if ortools_error:
+        response = RedirectResponse(url="/plan/generate", status_code=303)
+        response.set_cookie(
+            "flash",
+            "Planer konnte nicht gestartet werden (OR-Tools fehlt oder ist nicht kompatibel). "
+            "Bitte Python 3.11/3.12 verwenden oder OR-Tools neu installieren. "
+            f"Details: {ortools_error}",
+            max_age=15,
+        )
+        return response
+    normalize_lesson_weekdays(db)
+    period_start, period_end, weeks = get_planning_period(db)
+    template_end = period_start + timedelta(days=4)
     bpd = 4
-    generate_assignments(db, start_date, end_date, bpd)
-    grid = build_week_grid(db, start_date, bpd)
-    counts, total_assignments = week_counts(db, start_date, end_date)
+    try:
+        created_total = generate_repeating_period_assignments(db, period_start, weeks, bpd)
+    except OperationalError:
+        response = RedirectResponse(url="/plan/generate", status_code=303)
+        response.set_cookie(
+            "flash",
+            "Datenbank ist aktuell gesperrt. Bitte schließen Sie ggf. weitere geöffnete Instanzen und versuchen Sie es erneut.",
+            max_age=10,
+        )
+        return response
+    grid = build_week_grid(db, period_start, bpd)
+    counts, total_template_assignments = week_counts(db, period_start, template_end)
     teachers = db.query(Teacher).order_by(Teacher.last_name, Teacher.first_name).all()
     teacher_options = [
         {
@@ -240,16 +384,70 @@ async def generate_post(
         for t in teachers
     ]
     teacher_options_json = json.dumps(teacher_options, ensure_ascii=False)
+    if created_total < 0:
+        response = RedirectResponse(url="/plan/generate", status_code=303)
+        response.set_cookie(
+            "flash",
+            "Planung fehlgeschlagen: Der Solver ist abgestürzt (OR-Tools). "
+            "Bitte Aufsichtsplan.exe neu herunterladen/aktualisieren oder Python 3.11/3.12 verwenden. "
+            "Details siehe app.log.",
+            max_age=20,
+        )
+        return response
+    if created_total <= 0:
+        total_teachers = db.query(Teacher).filter(Teacher.exempt == False).count()  # noqa: E712
+        total_lessons = db.query(TeacherLesson).count()
+        relevant_lessons = (
+            db.query(TeacherLesson)
+            .filter(TeacherLesson.hour.in_([1, 2, 3, 4, 5, 6, 7]))
+            .count()
+        )
+        teachers_with_lessons = db.query(TeacherLesson.teacher_id).distinct().count()
+        active_teachers_with_lessons = (
+            db.query(TeacherLesson.teacher_id)
+            .join(Teacher, Teacher.id == TeacherLesson.teacher_id)
+            .filter(Teacher.exempt == False)  # noqa: E712
+            .distinct()
+            .count()
+        )
+        active_teachers_with_relevant_lessons = (
+            db.query(TeacherLesson.teacher_id)
+            .join(Teacher, Teacher.id == TeacherLesson.teacher_id)
+            .filter(Teacher.exempt == False)  # noqa: E712
+            .filter(TeacherLesson.hour.in_([1, 2, 3, 4, 5, 6, 7]))
+            .distinct()
+            .count()
+        )
+        lessons_wd_0_4 = db.query(TeacherLesson).filter(TeacherLesson.weekday.between(0, 4)).count()
+        lessons_wd_1_5 = db.query(TeacherLesson).filter(TeacherLesson.weekday.between(1, 5)).count()
+        total_need = sum(f.required_per_break or 0 for f in db.query(Floor).all()) * 5 * bpd
+        response = RedirectResponse(url="/plan/generate", status_code=303)
+        response.set_cookie(
+            "flash",
+            "Plan leer. Prüfen Sie Unterrichts-Import/Kürzel und Bedarf. "
+            f"Lehrkräfte aktiv: {total_teachers}, Stunden gesamt: {total_lessons}, "
+            f"relevante Stunden (1-7): {relevant_lessons}, Lehrkräfte mit Stunden: {teachers_with_lessons}, "
+            f"aktive Lehrkräfte mit Stunden: {active_teachers_with_lessons}, "
+            f"aktive Lehrkräfte mit relevanten Stunden: {active_teachers_with_relevant_lessons}, "
+            f"Wochentage 0-4: {lessons_wd_0_4}, Wochentage 1-5: {lessons_wd_1_5}, "
+            f"Bedarf/Woche: {total_need}.",
+            max_age=15,
+        )
+        return response
     return templates.TemplateResponse(
         "plan/week.html",
         {
             "request": request,
+            "period_start_label": period_start.strftime("%d.%m.%Y"),
+            "period_end_label": period_end.strftime("%d.%m.%Y"),
+            "period_weeks": weeks,
             "day_labels": weekday_labels(),
             "break_labels": break_labels(),
             "breaks_per_day": bpd,
             "grid": grid,
             "counts": counts,
-            "total_assignments": total_assignments,
+            "total_assignments": total_template_assignments,
+            "total_assignments_period": total_template_assignments * weeks,
             "teacher_options_json": teacher_options_json,
         },
     )
@@ -257,25 +455,25 @@ async def generate_post(
 
 @router.get("/export/pdf")
 async def export_pdf(db: Session = Depends(get_db)):
-    start_date, end_date = current_week_range()
+    start_date, end_date, _weeks = get_planning_period(db)
     pdf_bytes = generate_pdf(db, start_date, end_date)
     return StreamingResponse(iter([pdf_bytes]), media_type="application/pdf", headers={
-        "Content-Disposition": f"attachment; filename=aufsicht_woche.pdf"
+        "Content-Disposition": f"attachment; filename=aufsicht_{start_date.isoformat()}_{end_date.isoformat()}.pdf"
     })
 
 
 @router.get("/export/pdf-by-floor")
 async def export_pdf_by_floor(db: Session = Depends(get_db)):
-    start_date, end_date = current_week_range()
+    start_date, end_date, _weeks = get_planning_period(db)
     pdf_bytes = generate_pdf_by_floor(db, start_date, end_date)
     return StreamingResponse(iter([pdf_bytes]), media_type="application/pdf", headers={
-        "Content-Disposition": f"attachment; filename=aufsicht_nach_stockwerk.pdf"
+        "Content-Disposition": f"attachment; filename=aufsicht_nach_stockwerk_{start_date.isoformat()}_{end_date.isoformat()}.pdf"
     })
 
 
 @router.get("/export/gpu009")
 async def export_gpu009(db: Session = Depends(get_db)):
-    start_date, end_date = current_week_range()
+    start_date, end_date, _weeks = get_planning_period(db)
     text = generate_gpu009(db, start_date, end_date)
     return StreamingResponse(iter([text.encode("utf-8")]), media_type="text/plain; charset=utf-8", headers={
         "Content-Disposition": f"attachment; filename=GPU009_{start_date.isoformat()}_{end_date.isoformat()}.txt"
@@ -286,7 +484,7 @@ async def export_gpu009(db: Session = Depends(get_db)):
 async def save_changes(request: SaveChangesRequest, db: Session = Depends(get_db)):
     """Speichert manuelle Änderungen am Aufsichtsplan (Drag-and-Drop)"""
     try:
-        start_date, end_date = current_week_range()
+        period_start, period_end, weeks = get_planning_period(db)
         
         # Erstelle Lookups für Floors und Teachers
         floors_by_name = {f.name: f for f in db.query(Floor).all()}
@@ -300,85 +498,88 @@ async def save_changes(request: SaveChangesRequest, db: Session = Depends(get_db
             # Auch für den Fall, dass nur der Name verwendet wird
             teachers_by_name[teacher.last_name] = teacher
         
-        # Lösche alle existierenden Assignments und DutySlots für den aktuellen Zeitraum
-        # Zuerst Assignments löschen (wegen Foreign Key Constraint)
-        existing_slots = db.query(DutySlot).filter(
-            DutySlot.date >= start_date,
-            DutySlot.date <= end_date
-        ).all()
-        
-        for slot in existing_slots:
-            db.query(Assignment).filter(Assignment.duty_slot_id == slot.id).delete()
-        
-        # Dann DutySlots löschen
-        db.query(DutySlot).filter(
-            DutySlot.date >= start_date,
-            DutySlot.date <= end_date
-        ).delete()
-        
-        # Explizit committen, um sicherzustellen, dass die Löschung abgeschlossen ist
+        # Fehlende Floors einmalig anlegen (falls z.B. umbenannt/neu).
+        for assignment_data in request.assignments:
+            floor_name = (assignment_data.floor or "").strip()
+            if not floor_name or floor_name in floors_by_name:
+                continue
+            floor = Floor(name=floor_name, required_per_break=1, order_index=len(floors_by_name))
+            db.add(floor)
+            db.flush()
+            floors_by_name[floor_name] = floor
         db.commit()
+
+        # Stelle sicher, dass DutySlots für den gesamten Zeitraum existieren.
+        floors = list(floors_by_name.values())
+        current_date = period_start
+        while current_date <= period_end:
+            if current_date.weekday() < 5:
+                for break_index in range(1, 5):
+                    for floor in floors:
+                        slot = (
+                            db.query(DutySlot)
+                            .filter(
+                                DutySlot.date == current_date,
+                                DutySlot.break_index == break_index,
+                                DutySlot.floor_id == floor.id,
+                            )
+                            .one_or_none()
+                        )
+                        if slot is None:
+                            db.add(DutySlot(date=current_date, break_index=break_index, floor_id=floor.id))
+            current_date += timedelta(days=1)
+        db.commit()
+
+        # Lösche alle existierenden Assignments für den Zeitraum.
+        slot_ids_subquery = select(DutySlot.id).where(
+            DutySlot.date >= period_start, DutySlot.date <= period_end
+        )
+        db.query(Assignment).filter(Assignment.duty_slot_id.in_(slot_ids_subquery)).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+        # Lookup: (date, break_index, floor_id) -> duty_slot_id
+        all_slots = (
+            db.query(DutySlot)
+            .filter(DutySlot.date >= period_start, DutySlot.date <= period_end)
+            .all()
+        )
+        slot_lookup = {(s.date, int(s.break_index), int(s.floor_id)): int(s.id) for s in all_slots}
         
         # Erstelle neue Assignments basierend auf den Drag-and-Drop-Änderungen
         created_assignments = 0
         
-        for assignment_data in request.assignments:
-            day_offset = assignment_data.day
-            break_index = assignment_data.break_index
-            floor_name = assignment_data.floor
-            teacher_names = assignment_data.teachers
-            
-            # Überspringe leere Assignments
-            if not teacher_names:
-                continue
-            
-            # Finde oder erstelle Floor
-            floor = floors_by_name.get(floor_name)
-            if not floor:
-                # Falls ein neues Stockwerk durch Drag-and-Drop entstanden ist
-                floor = Floor(name=floor_name, required_per_break=1, order_index=len(floors_by_name))
-                db.add(floor)
-                db.flush()
-                floors_by_name[floor_name] = floor
-            
-            # Berechne das Datum
-            slot_date = start_date + timedelta(days=day_offset)
-            
-            # Prüfe, ob ein DutySlot mit diesen Parametern bereits existiert (Sicherheitscheck)
-            existing_duty_slot = db.query(DutySlot).filter(
-                DutySlot.date == slot_date,
-                DutySlot.break_index == break_index,
-                DutySlot.floor_id == floor.id
-            ).first()
-            
-            if existing_duty_slot:
-                duty_slot = existing_duty_slot
-            else:
-                # Erstelle DutySlot
-                duty_slot = DutySlot(
-                    date=slot_date,
-                    break_index=break_index,
-                    floor_id=floor.id
-                )
-                db.add(duty_slot)
-                db.flush()
-            
-            # Erstelle Assignments für alle Lehrkräfte
-            for teacher_name in teacher_names:
-                teacher_name = teacher_name.strip()
-                if not teacher_name:
+        for week_offset in range(weeks):
+            for assignment_data in request.assignments:
+                day_offset = int(assignment_data.day)
+                break_index = int(assignment_data.break_index)
+                floor_name = (assignment_data.floor or "").strip()
+                teacher_names = assignment_data.teachers or []
+
+                floor = floors_by_name.get(floor_name)
+                if not floor:
                     continue
-                
-                teacher = teachers_by_name.get(teacher_name)
-                if teacher:
-                    assignment = Assignment(
-                        duty_slot_id=duty_slot.id,
-                        teacher_id=teacher.id
-                    )
-                    db.add(assignment)
-                    created_assignments += 1
-                else:
-                    print(f"[WARN] Lehrkraft '{teacher_name}' nicht gefunden beim Speichern")
+
+                slot_date = period_start + timedelta(days=(week_offset * 7) + day_offset)
+                if slot_date > period_end:
+                    continue
+
+                duty_slot_id = slot_lookup.get((slot_date, break_index, int(floor.id)))
+                if duty_slot_id is None:
+                    continue
+
+                for teacher_name in teacher_names:
+                    teacher_name = (teacher_name or "").strip()
+                    if not teacher_name:
+                        continue
+
+                    teacher = teachers_by_name.get(teacher_name)
+                    if teacher:
+                        db.add(Assignment(duty_slot_id=duty_slot_id, teacher_id=teacher.id))
+                        created_assignments += 1
+                    else:
+                        print(f"[WARN] Lehrkraft '{teacher_name}' nicht gefunden beim Speichern")
         
         # Committe alle Änderungen
         db.commit()
@@ -386,7 +587,10 @@ async def save_changes(request: SaveChangesRequest, db: Session = Depends(get_db
         return JSONResponse(content={
             "message": "Änderungen erfolgreich gespeichert",
             "created_assignments": created_assignments,
-            "total_slots": len(request.assignments)
+            "total_slots": len(request.assignments),
+            "weeks": weeks,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
         })
         
     except Exception as e:

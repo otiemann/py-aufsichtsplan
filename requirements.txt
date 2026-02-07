@@ -8,3 +8,5 @@ reportlab==4.2.5
 requests==2.32.3
 ortools
 pytest==8.3.3
+pywebview
+pythonnet; platform_system == "Windows"

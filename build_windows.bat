@@ -1,11 +1,10 @@
 @echo off
 setlocal
 
-REM Python venv optional - priorisiere neueste Version
+REM Python venv optional - bevorzuge 3.12/3.11 (OR-Tools Kompatibilität)
 where py >nul 2>nul && (
-  REM Prüfe nach Python 3.13, 3.12, dann Fallback zu py
-  py -3.13 --version >nul 2>nul && set PY=py -3.13 || (
-    py -3.12 --version >nul 2>nul && set PY=py -3.12 || set PY=py
+  py -3.12 --version >nul 2>nul && set PY=py -3.12 || (
+    py -3.11 --version >nul 2>nul && set PY=py -3.11 || set PY=py
   )
 ) || set PY=python
 
@@ -21,4 +20,3 @@ pyinstaller Aufsichtsplan.spec
 
 echo Build abgeschlossen. EXE unter dist\Aufsichtsplan.exe
 endlocal
-

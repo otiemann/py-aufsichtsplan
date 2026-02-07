@@ -1,3 +1,48 @@
+<style>
+    .unsaved-banner {
+        position: sticky;
+        top: 0;
+        z-index: 6;
+        background: #fff3cd;
+        border: 1px solid #ffeeba;
+        color: #856404;
+        padding: 0.6rem 0.9rem;
+        border-radius: 6px;
+        margin-bottom: 0.8rem;
+        display: none;
+    }
+
+    .plan-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin: 0.5rem 0 0.8rem 0;
+        font-size: 0.9rem;
+        color: #555;
+    }
+
+    .legend-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid #ddd;
+        background: #f8f9fa;
+    }
+
+    .floor-container[data-empty="true"] {
+        border-left-color: #e74c3c;
+        background: #fdecea;
+    }
+
+    .floor-container[data-empty="true"] .teachers-empty-indicator {
+        color: #c0392b;
+        font-style: normal;
+        font-weight: bold;
+    }
+</style>
+
 <div id="planContainer">
     {% if teacher_options_json %}
     <script>
@@ -7,6 +52,15 @@
     <script>
         window.teacherOptions = window.teacherOptions || [];
     </script>
+    {% endif %}
+    {% if grid and day_labels and breaks_per_day %}
+    <div id="unsavedBanner" class="unsaved-banner">⚠️ Änderungen nicht gespeichert</div>
+    <div class="plan-legend">
+        <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e3f2fd;border:1px solid #2196f3;"></span> Reguläre Einteilung</span>
+        <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fdecea;border:1px solid #e74c3c;"></span> Warnung</span>
+        <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fdecea;border:1px solid #e74c3c;"></span> Unbesetzt</span>
+        <span class="legend-chip">⚠️ Hinweis: Einteilung prüfen</span>
+    </div>
     {% endif %}
     <table style="width: 100%; border-collapse: collapse;">
         <thead>
@@ -18,7 +72,8 @@
             </tr>
         </thead>
         <tbody>
-            {% if grid and day_labels and breaks_per_day %} {% for d_idx in range(0, 5) %}
+    {% if grid and day_labels and breaks_per_day %}
+    {% for d_idx in range(0, 5) %}
             <tr>
                 <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold; background: #f9f9f9;">
                     {{ day_labels[d_idx] }}
@@ -27,10 +82,11 @@
                 <td class="drop-zone" data-day="{{ d_idx }}" data-break="{{ b }}" style="border: 1px solid #ddd; padding: 8px; vertical-align: top; min-height: 60px; position: relative;" ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="clearDropHighlight(event)"
                     ondragenter="handleDragEnter(event)">
                     {% for line in grid[d_idx][b] %} {% set outer_loop = loop %} {% for floor_line in [line] %} {% if ':' in floor_line %} {% set floor_name, teachers_str = floor_line.split(':', 1) %}
-                    <div class="floor-container" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
+                    {% set has_teachers = teachers_str.strip() != '—' and teachers_str.strip() != '' %}
+                    <div class="floor-container" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-empty="{{ 'true' if not has_teachers else 'false' }}" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
                         <strong>{{ floor_name.strip() }}:</strong>
                         <div class="teachers-container" style="margin-top: 2px;">
-                            {% if teachers_str.strip() != '—' and teachers_str.strip() != '' %}
+                            {% if has_teachers %}
                                 {% for teacher in teachers_str.split(',') %}
                                     {% set teacher_raw = teacher.strip() %}
                                     {% if teacher_raw %}
@@ -155,6 +211,9 @@
         if (placeholder) {
             placeholder.remove();
         }
+        if (container.closest && container.closest('.floor-container')) {
+            container.closest('.floor-container').dataset.empty = 'false';
+        }
     }
 
     function ensurePlaceholder(container) {
@@ -166,6 +225,9 @@
             if (existing) {
                 existing.remove();
             }
+            if (container.closest && container.closest('.floor-container')) {
+                container.closest('.floor-container').dataset.empty = 'false';
+            }
             return;
         }
         if (!container.querySelector('.teachers-empty-indicator')) {
@@ -175,6 +237,9 @@
             placeholder.style.fontStyle = 'italic';
             placeholder.textContent = '—';
             container.appendChild(placeholder);
+        }
+        if (container.closest && container.closest('.floor-container')) {
+            container.closest('.floor-container').dataset.empty = 'true';
         }
     }
 
@@ -219,6 +284,17 @@
             chip.style.background = '#e3f2fd';
             chip.style.transform = 'scale(1)';
         }, 500);
+    }
+
+    function setHasChanges(value) {
+        hasChanges = value;
+        const banner = document.getElementById('unsavedBanner');
+        if (banner) {
+            banner.style.display = hasChanges ? 'block' : 'none';
+        }
+        if (typeof updateSaveButton === 'function') {
+            updateSaveButton();
+        }
     }
 
     function ensureTeacherOptionsDatalist() {
@@ -292,8 +368,7 @@
         teachersContainer.appendChild(chip);
         animateChip(chip);
 
-        hasChanges = true;
-        updateSaveButton();
+        setHasChanges(true);
         showSuccessMessage(`${getTeacherDisplayName(teacherValue)} → ${floorContainer.dataset.floor}`);
         return true;
     }
@@ -376,8 +451,7 @@
         chip.remove();
         ensurePlaceholder(teachersContainer);
 
-        hasChanges = true;
-        updateSaveButton();
+        setHasChanges(true);
         showSuccessMessage(`${getTeacherDisplayName(teacherValue)} von ${floorName} entfernt`);
     }
 
@@ -631,8 +705,7 @@
         teachersContainer.appendChild(chip);
         animateChip(chip);
 
-        hasChanges = true;
-        updateSaveButton();
+        setHasChanges(true);
         showSuccessMessage(`${draggedTeacher.display || draggedTeacher.teacher} → ${targetFloorName}`);
 
         resetDragState();
@@ -757,8 +830,7 @@
             });
 
             if (response.ok) {
-                hasChanges = false;
-                updateSaveButton();
+                setHasChanges(false);
                 saveButton.textContent = '✅ Gespeichert';
                 setTimeout(() => {
                     updateSaveButton();
@@ -791,6 +863,7 @@
     // Initialisierung der Drag-and-Drop-Funktionalität
     function initializeDragAndDrop() {
         ensureTeacherOptionsDatalist();
+        updateSaveButton();
     }
 
     // Initialisiere nach dem Laden
