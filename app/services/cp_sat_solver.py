@@ -203,6 +203,7 @@ class BreakSupervisionSolver:
         day_assignment_vars: Dict[Tuple[int, date], List[cp_model.IntVar]] = {}
         day_excess_terms: List[cp_model.IntVar] = []
         priority_terms: List[cp_model.IntVar] = []
+        preferred_hit_terms: List[cp_model.IntVar] = []
         max_cost = 0
 
         shortfall_vars: Dict[Tuple[str, int], cp_model.IntVar] = {}
@@ -228,6 +229,8 @@ class BreakSupervisionSolver:
                         priority_terms.append(var * cost)
                     if cost > max_cost:
                         max_cost = cost
+                    if teacher.preferred_floor is not None and teacher.preferred_floor == floor_id:
+                        preferred_hit_terms.append(var)
 
                 shortfall = model.NewIntVar(0, need, f"short_{slot.slot_id}_{floor_id}")
                 shortfall_vars[(slot.slot_id, floor_id)] = shortfall
@@ -246,6 +249,7 @@ class BreakSupervisionSolver:
         load_vars: Dict[int, cp_model.IntVar] = {}
         band_under_terms: List[cp_model.IntVar] = []
         band_over_terms: List[cp_model.IntVar] = []
+        min_one_miss_terms: List[cp_model.IntVar] = []
 
         for teacher in self.teachers:
             load_var = model.NewIntVar(0, total_need, f"load_{teacher.id}")
@@ -261,9 +265,20 @@ class BreakSupervisionSolver:
             model.Add(max_dev >= dev_pos_var)
             model.Add(max_dev >= dev_neg_var)
 
+            # Fairness: Lehrkräfte mit Soll > 0 und mindestens einer
+            # Einsatzmöglichkeit sollen nach Möglichkeit >= 1 Einsatz erhalten.
+            if teacher.target > 0 and teacher_vars[teacher.id]:
+                miss_one = model.NewIntVar(0, 1, f"min_one_miss_{teacher.id}")
+                model.Add(load_var + miss_one >= 1)
+                min_one_miss_terms.append(miss_one)
+
+            # Beim Runterskalieren des internen Targets (Überdeckung) soll die
+            # Lehrkraft dennoch bis zum ursprünglichen Soll belastbar bleiben.
+            cap_target = max(int(teacher.target), int(teacher.nominal_target))
+
             if self.fairness_band is not None:
                 min_load = max(0, teacher.target - self.fairness_band)
-                max_load = teacher.target + self.fairness_band
+                max_load = cap_target + self.fairness_band
                 under = model.NewIntVar(0, total_need, f"band_under_{teacher.id}")
                 over = model.NewIntVar(0, total_need, f"band_over_{teacher.id}")
                 model.Add(load_var + under >= min_load)
@@ -276,7 +291,7 @@ class BreakSupervisionSolver:
                 band_over_terms.append(over)
             else:
                 if self.max_extra_duties is not None:
-                    cap = teacher.target + self.max_extra_duties
+                    cap = cap_target + self.max_extra_duties
                     over = model.NewIntVar(0, total_need, f"band_over_{teacher.id}")
                     model.Add(load_var - over <= cap)
                     model.Add(over >= 0)
@@ -284,7 +299,7 @@ class BreakSupervisionSolver:
                     band_over_terms.append(over)
 
             if self.max_extra_duties is not None:
-                extra_cap = teacher.target + (self.fairness_band or 0) + self.max_extra_duties
+                extra_cap = cap_target + (self.fairness_band or 0) + self.max_extra_duties
                 if extra_cap >= 0:
                     cap_over = model.NewIntVar(0, total_need, f"cap_over_{teacher.id}")
                     model.Add(load_var <= extra_cap + cap_over)
@@ -300,11 +315,17 @@ class BreakSupervisionSolver:
         else:
             model.Add(P == 0)
 
+        preferred_hit_total = model.NewIntVar(0, total_need, "preferred_hit_total")
+        if preferred_hit_terms:
+            model.Add(preferred_hit_total == sum(preferred_hit_terms))
+        else:
+            model.Add(preferred_hit_total == 0)
+
         total_dev = model.NewIntVar(0, len(self.teachers) * deviation_cap * 5, "total_dev")
         total_dev_terms = []
         for teacher in self.teachers:
             over_weight = 1
-            under_weight = max(1, teacher.availability_days or 1)
+            under_weight = 1
             total_dev_terms.append(dev_pos[teacher.id] * over_weight)
             total_dev_terms.append(dev_neg[teacher.id] * under_weight)
         model.Add(total_dev == sum(total_dev_terms))
@@ -322,6 +343,13 @@ class BreakSupervisionSolver:
         else:
             total_shortfall = model.NewIntVar(0, 0, "total_shortfall")
             model.Add(total_shortfall == 0)
+
+        if min_one_miss_terms:
+            total_min_one_miss = model.NewIntVar(0, len(min_one_miss_terms), "total_min_one_miss")
+            model.Add(total_min_one_miss == sum(min_one_miss_terms))
+        else:
+            total_min_one_miss = model.NewIntVar(0, 0, "total_min_one_miss")
+            model.Add(total_min_one_miss == 0)
 
         daily_excess_total: cp_model.IntVar
         if day_assignment_vars:
@@ -357,6 +385,28 @@ class BreakSupervisionSolver:
             daily_excess_total = model.NewIntVar(0, 0, "daily_excess_total")
             model.Add(daily_excess_total == 0)
 
+        weight_max_dev = 1_000_000
+        weight_total_dev = 10_000
+        weight_daily_excess = 500_000 if self.max_one_per_day else 100
+        weight_band_violation = self.band_penalty if self.fairness_band is not None or self.max_extra_duties is not None else 0
+        weight_shortfall = 50_000_000
+        fairness_upper = (
+            deviation_cap * weight_max_dev
+            + (len(self.teachers) * deviation_cap * 5) * weight_total_dev
+            + total_need * weight_daily_excess
+            + (len(self.teachers) * deviation_cap) * weight_band_violation
+            + self.total_need * weight_shortfall
+        )
+        fairness_score = model.NewIntVar(0, max(0, fairness_upper), "fairness_score")
+        model.Add(
+            fairness_score
+            == max_dev * weight_max_dev
+            + total_dev * weight_total_dev
+            + daily_excess_total * weight_daily_excess
+            + total_band_violation * weight_band_violation
+            + total_shortfall * weight_shortfall
+        )
+
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = self.time_limit_s
         solver.parameters.num_search_workers = self.num_workers
@@ -385,43 +435,89 @@ class BreakSupervisionSolver:
         best_shortfall = int(solver.Value(total_shortfall))
         model.Add(total_shortfall == best_shortfall)
 
-        # Phase 2: Prioritätskosten unter fixiertem Shortfall minimieren
-        model.Minimize(P)
-        status_phase2 = solver.Solve(model)
-        status_name_phase2 = solver.StatusName(status_phase2)
-        if status_phase2 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
-            logger.warning("Prioritätsoptimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus Phase 1 wird verwendet.", status_name_phase2)
-            best_priority = 0
-        else:
-            best_priority = int(solver.Value(P))
-            model.Add(P == best_priority)
+        # Fallback-Lösung: letztes erfolgreiches Solver-Ergebnis
+        fallback_solver = solver
+        fallback_status = status_phase1
+        fallback_status_name = status_name_phase1
 
-        # Phase 3: Fairness unter optimalem Shortfall und Priorität
+        # Phase 2: Minimiere Lehrkräfte mit Soll>0 ohne Einsatz (wenn möglich)
+        if min_one_miss_terms:
+            solver_min_one = cp_model.CpSolver()
+            solver_min_one.parameters.max_time_in_seconds = self.time_limit_s
+            solver_min_one.parameters.num_search_workers = self.num_workers
+
+            model.Minimize(total_min_one_miss)
+            status_phase2 = solver_min_one.Solve(model)
+            status_name_phase2 = solver_min_one.StatusName(status_phase2)
+            if status_phase2 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+                logger.warning(
+                    "Min-One-Optimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.",
+                    status_name_phase2,
+                )
+            else:
+                best_min_one_miss = int(solver_min_one.Value(total_min_one_miss))
+                model.Add(total_min_one_miss == best_min_one_miss)
+                fallback_solver = solver_min_one
+                fallback_status = status_phase2
+                fallback_status_name = status_name_phase2
+
+        # Phase 3: Bevorzugte Stockwerke maximal bedienen
+        if preferred_hit_terms:
+            solver_pref = cp_model.CpSolver()
+            solver_pref.parameters.max_time_in_seconds = self.time_limit_s
+            solver_pref.parameters.num_search_workers = self.num_workers
+            model.Maximize(preferred_hit_total)
+            status_phase3 = solver_pref.Solve(model)
+            status_name_phase3 = solver_pref.StatusName(status_phase3)
+            if status_phase3 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+                logger.warning(
+                    "Präferenz-Optimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.",
+                    status_name_phase3,
+                )
+            else:
+                best_preferred_hits = int(solver_pref.Value(preferred_hit_total))
+                model.Add(preferred_hit_total == best_preferred_hits)
+                fallback_solver = solver_pref
+                fallback_status = status_phase3
+                fallback_status_name = status_name_phase3
+
+        # Phase 4: Fairness unter fixiertem Shortfall, Min-One und Präferenztreffern
+        solver_fair = cp_model.CpSolver()
+        solver_fair.parameters.max_time_in_seconds = self.time_limit_s
+        solver_fair.parameters.num_search_workers = self.num_workers
+        model.Minimize(fairness_score)
+        status_phase4 = solver_fair.Solve(model)
+        status_name_phase4 = solver_fair.StatusName(status_phase4)
+        if status_phase4 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+            logger.warning(
+                "Fairness-Optimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.",
+                status_name_phase4,
+            )
+        else:
+            best_fairness = int(solver_fair.Value(fairness_score))
+            model.Add(fairness_score == best_fairness)
+            fallback_solver = solver_fair
+            fallback_status = status_phase4
+            fallback_status_name = status_name_phase4
+
+        # Phase 5: Prioritätskosten als finaler Tie-Breaker
         solver2 = cp_model.CpSolver()
         solver2.parameters.max_time_in_seconds = self.time_limit_s
         solver2.parameters.num_search_workers = self.num_workers
 
-        weight_max_dev = 1_000_000
-        weight_total_dev = 10_000
-        weight_daily_excess = 500_000 if self.max_one_per_day else 100
-        weight_band_violation = self.band_penalty if self.fairness_band is not None or self.max_extra_duties is not None else 0
-        weight_shortfall = 50_000_000
-        model.Minimize(
-            max_dev * weight_max_dev
-            + total_dev * weight_total_dev
-            + daily_excess_total * weight_daily_excess
-            + total_band_violation * weight_band_violation
-            + total_shortfall * weight_shortfall
-        )
+        model.Minimize(P)
 
         status2 = solver2.Solve(model)
         status_name2 = solver2.StatusName(status2)
 
         if status2 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
-            logger.warning("Fairness-Optimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.", status_name2)
-            solver2 = solver
-            status2 = status_phase2
-            status_name2 = status_name_phase2
+            logger.warning("Prioritäts-Tie-Break konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.", status_name2)
+            solver2 = fallback_solver
+            status2 = fallback_status
+            status_name2 = fallback_status_name
+            best_priority = int(solver2.Value(P)) if self.teachers else 0
+        else:
+            best_priority = int(solver2.Value(P))
 
         assignments: List[AssignmentDecision] = []
         for (teacher_id, slot_id, floor_id), var in decision_vars.items():

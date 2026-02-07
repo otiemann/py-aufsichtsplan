@@ -10,7 +10,14 @@ from sqlalchemy.orm import Session
 import csv
 import io
 
-from ..database import get_db
+from ..database import get_db, SQLALCHEMY_DATABASE_URL
+from ..db_config import (
+    clear_database_path_config,
+    get_database_config_path,
+    list_database_candidates,
+    read_database_path_config,
+    write_database_path_config,
+)
 from ..models import Teacher, TeacherQuota, Floor
 from ..services.gpu_import import import_gpu_file, clear_lessons, get_lesson_stats, update_attendance_from_lessons
 
@@ -25,12 +32,36 @@ except Exception:
     templates = Jinja2Templates(directory="app/templates")
 
 
+def _current_sqlite_path() -> str:
+    if SQLALCHEMY_DATABASE_URL.startswith("sqlite:///"):
+        return os.path.abspath(SQLALCHEMY_DATABASE_URL[10:])
+    return SQLALCHEMY_DATABASE_URL
+
+
 @router.get("/")
 async def admin_index(request: Request, db: Session = Depends(get_db)):
     lesson_stats = get_lesson_stats(db)
+    current_db_path = _current_sqlite_path()
+    configured_db_path = read_database_path_config()
+    config_file_path = get_database_config_path()
+    db_candidates = list_database_candidates()
+    if current_db_path not in db_candidates:
+        db_candidates = [current_db_path] + db_candidates
+
+    db_path_source = "Standardpfad"
+    if os.environ.get("DATABASE_PATH"):
+        db_path_source = "Umgebungsvariable DATABASE_PATH"
+    elif configured_db_path:
+        db_path_source = "Gespeicherte Anwendungseinstellung"
+
     return templates.TemplateResponse("admin/index.html", {
         "request": request, 
-        "lesson_stats": lesson_stats
+        "lesson_stats": lesson_stats,
+        "current_db_path": current_db_path,
+        "configured_db_path": configured_db_path,
+        "db_config_path": config_file_path,
+        "db_candidates": db_candidates,
+        "db_path_source": db_path_source,
     })
 
 
@@ -350,3 +381,38 @@ async def update_attendance_from_lessons_route(db: Session = Depends(get_db)):
     response.set_cookie("flash", f"Anwesenheitstage von {count} Lehrkräften aus Stundenplan aktualisiert", max_age=5)
     return response
 
+
+@router.post("/database/select")
+async def select_database_path(
+    database_path: str = Form(...),
+):
+    try:
+        normalized = write_database_path_config(database_path)
+    except ValueError as exc:
+        response = RedirectResponse(url="/admin", status_code=303)
+        response.set_cookie("flash", f"Datenbankpfad ungültig: {exc}", max_age=8)
+        return response
+    except OSError as exc:
+        response = RedirectResponse(url="/admin", status_code=303)
+        response.set_cookie("flash", f"Datenbankpfad konnte nicht gespeichert werden: {exc}", max_age=8)
+        return response
+
+    response = RedirectResponse(url="/admin", status_code=303)
+    response.set_cookie(
+        "flash",
+        f"Datenbankpfad gespeichert: {normalized}. Bitte Anwendung neu starten.",
+        max_age=12,
+    )
+    return response
+
+
+@router.post("/database/reset")
+async def reset_database_path():
+    clear_database_path_config()
+    response = RedirectResponse(url="/admin", status_code=303)
+    response.set_cookie(
+        "flash",
+        "Datenbankpfad-Einstellung zurückgesetzt. Bitte Anwendung neu starten.",
+        max_age=12,
+    )
+    return response

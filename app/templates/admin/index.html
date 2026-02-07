@@ -104,6 +104,43 @@
 
 <!-- Datenbank-Verwaltung -->
 <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #007bff;">
+    <h3>🗂️ Aktive Datenbank auswählen</h3>
+    <p>Wählen Sie hier, welche Datenbank-Datei die Anwendung verwenden soll.</p>
+
+    <div style="margin-top: 1rem; margin-bottom: 1rem; padding: 0.9rem; border-radius: 5px; background: #eef4ff; border-left: 3px solid #007bff;">
+        <div><strong>Aktive Datenbank:</strong> <code>{{ current_db_path }}</code></div>
+        <div><strong>Quelle:</strong> {{ db_path_source }}</div>
+        <div>
+            <strong>Gespeicherte Einstellung:</strong>
+            {% if configured_db_path %}
+            <code>{{ configured_db_path }}</code>
+            {% else %}
+            Keine (Standardpfad aktiv)
+            {% endif %}
+        </div>
+        <div><small>Konfigurationsdatei: <code>{{ db_config_path }}</code></small></div>
+    </div>
+
+    <form method="post" action="/admin/database/select" style="margin-bottom: 0.8rem;">
+        <label for="database_path"><strong>Datenbankpfad:</strong></label>
+        <input id="database_path" name="database_path" list="dbCandidates" value="{{ configured_db_path or current_db_path }}" required style="width: 100%; margin-top: 0.4rem; margin-bottom: 0.6rem; padding: 0.5rem; border: 1px solid #007bff; border-radius: 4px; font-family: monospace;">
+        <datalist id="dbCandidates">
+            {% for path in db_candidates %}
+            <option value="{{ path }}"></option>
+            {% endfor %}
+        </datalist>
+        <button type="submit" style="padding: 0.6rem 1rem; background: #007bff; color: white; border: none; border-radius: 4px;">💾 Datenbankpfad speichern</button>
+    </form>
+
+    <form method="post" action="/admin/database/reset" onsubmit="return confirm('Gespeicherte Datenbank-Auswahl zurücksetzen und Standardpfad verwenden?');">
+        <button type="submit" style="padding: 0.5rem 0.9rem; background: #6c757d; color: white; border: none; border-radius: 4px;">↩️ Auf Standardpfad zurücksetzen</button>
+    </form>
+
+    <p style="margin-top: 0.8rem;"><small><strong>Hinweis:</strong> Änderungen werden nach einem Neustart der Anwendung wirksam.</small></p>
+</div>
+
+<!-- Datenbank-Verwaltung -->
+<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #007bff;">
     <h3>💾 Datenbank-Verwaltung</h3>
     <p>Sichern Sie Ihre Daten oder stellen Sie sie aus einem Backup wieder her.</p>
 

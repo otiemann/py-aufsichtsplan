@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import multiprocessing as mp
 import os
@@ -321,40 +322,108 @@ def _adjust_targets_for_total_need(teacher_specs: List["TeacherSpec"], break_slo
         for need in slot.needs.values()
     )
     total_nominal = sum(spec.nominal_target for spec in teacher_specs)
-    if total_nominal >= total_need:
+    if total_nominal == total_need:
         return {}
 
-    extra = total_need - total_nominal
-    weights: Dict[int, int] = {}
-    for spec in teacher_specs:
-        weight = max(spec.availability_days, 1)
-        if weight == 0 and spec.nominal_target > 0:
-            weight = 1
-        weights[spec.id] = weight
-    weight_sum = sum(weights.values())
-    if weight_sum <= 0:
-        weight_sum = len(teacher_specs) or 1
+    anchor_ordinal = min(
+        (
+            slot.date.toordinal()
+            for slot in break_slots
+            if getattr(slot, "date", None) is not None
+        ),
+        default=0,
+    )
+
+    def tie_rank(spec_id: int) -> int:
+        # Deterministisch, aber unabhängig von der Listen-/Alphabet-Reihenfolge.
+        token = f"{anchor_ordinal}:{spec_id}".encode("utf-8")
+        digest = hashlib.blake2b(token, digest_size=8).digest()
+        return int.from_bytes(digest, "big")
+
+    # Unterdeckung: zusätzliche Aufsichten proportional zur Verfügbarkeit verteilen.
+    if total_nominal < total_need:
+        extra = total_need - total_nominal
+        weights: Dict[int, int] = {}
         for spec in teacher_specs:
-            weights[spec.id] = 1
+            weight = max(spec.availability_days, 1)
+            if weight == 0 and spec.nominal_target > 0:
+                weight = 1
+            weights[spec.id] = weight
+        weight_sum = sum(weights.values())
+        if weight_sum <= 0:
+            weight_sum = len(teacher_specs) or 1
+            for spec in teacher_specs:
+                weights[spec.id] = 1
 
-    fractional: List[Tuple[float, "TeacherSpec"]] = []
-    allocated = 0
+        fractional: List[Tuple[float, "TeacherSpec"]] = []
+        allocated = 0
+        for spec in teacher_specs:
+            weight = weights.get(spec.id, 1)
+            raw_share = extra * weight / weight_sum
+            base_extra = int(raw_share)
+            spec.target = spec.nominal_target + base_extra
+            allocated += base_extra
+            fractional.append((raw_share - base_extra, spec))
+
+        remainder = extra - allocated
+        for _, spec in sorted(
+            fractional,
+            key=lambda item: (
+                item[0],
+                item[1].availability_days,
+                tie_rank(item[1].id),
+            ),
+            reverse=True,
+        ):
+            if remainder <= 0:
+                break
+            spec.target += 1
+            remainder -= 1
+
+        return {
+            spec.id: spec.target - spec.nominal_target
+            for spec in teacher_specs
+            if spec.target != spec.nominal_target
+        }
+
+    # Überdeckung: Sollwerte proportional herunterrechnen, damit die Verteilung
+    # gleichmäßiger bleibt und nicht viele bei 3/3 landen, während andere stark abfallen.
+    if total_nominal <= 0:
+        return {}
+
+    fractional_down: List[Tuple[float, "TeacherSpec"]] = []
+    allocated_down = 0
     for spec in teacher_specs:
-        weight = weights.get(spec.id, 1)
-        raw_share = extra * weight / weight_sum
-        base_extra = int(raw_share)
-        spec.target = spec.nominal_target + base_extra
-        allocated += base_extra
-        fractional.append((raw_share - base_extra, spec))
+        nominal = max(0, int(spec.nominal_target))
+        if nominal <= 0:
+            spec.target = 0
+            continue
+        raw_target = total_need * nominal / total_nominal
+        base_target = int(raw_target)
+        spec.target = base_target
+        allocated_down += base_target
+        fractional_down.append((raw_target - base_target, spec))
 
-    remainder = extra - allocated
-    for _, spec in sorted(fractional, key=lambda item: item[0], reverse=True):
-        if remainder <= 0:
+    remainder_down = total_need - allocated_down
+    for _, spec in sorted(
+        fractional_down,
+        key=lambda item: (
+            item[0],
+            -item[1].availability_days,
+            tie_rank(item[1].id),
+        ),
+        reverse=True,
+    ):
+        if remainder_down <= 0:
             break
         spec.target += 1
-        remainder -= 1
+        remainder_down -= 1
 
-    return {spec.id: spec.target - spec.nominal_target for spec in teacher_specs}
+    return {
+        spec.id: spec.target - spec.nominal_target
+        for spec in teacher_specs
+        if spec.target != spec.nominal_target
+    }
 
 
 def _preflight_checks(
@@ -510,13 +579,21 @@ def generate_assignments(
 
     adjustments = _adjust_targets_for_total_need(teacher_specs, break_slots)
     if adjustments:
+        net_change = sum(adjustments.values())
+        if net_change > 0:
+            headline = "Zusätzliche Aufsichten erforderlich (%s insgesamt). Anpassung: %s"
+        elif net_change < 0:
+            headline = "Soll-Aufsichten wegen Überdeckung reduziert (%s insgesamt). Anpassung: %s"
+        else:
+            headline = "Soll-Aufsichten proportional angepasst (%s insgesamt). Anpassung: %s"
+
         logger.info(
-            "Zusätzliche Aufsichten erforderlich (%s insgesamt). Verteilung auf Lehrkräfte: %s",
-            sum(adjustments.values()),
+            headline,
+            net_change,
             ", ".join(
-                f"{next((t.abbreviation or t.last_name) for t in teachers if t.id == teacher_id)}:+{extra}"
+                f"{next((t.abbreviation or t.last_name) for t in teachers if t.id == teacher_id)}:{extra:+d}"
                 for teacher_id, extra in adjustments.items()
-                if extra > 0
+                if extra != 0
             ) or "keine",
         )
 
