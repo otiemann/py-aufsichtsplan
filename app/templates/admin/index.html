@@ -1,113 +1,141 @@
-{% extends "base.html" %} {% block content %}
-<h2>Admin - Daten Import</h2>
+{% extends "base.html" %}
 
-<!-- Lehrkräfte CSV Import -->
-<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #007bff;">
-    <h3>📊 Lehrkräfte CSV Import</h3>
-    <p>Laden Sie hier eine CSV-Datei mit Lehrkräften hoch.</p>
+{% block content %}
+<style>
+    .admin-grid-2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
 
-    <form method="post" action="/admin/teachers/upload" enctype="multipart/form-data" style="margin-bottom: 1rem;">
-        <div style="margin-bottom: 1rem;">
-            <label>Datei (CSV): <input type="file" name="file" accept=".csv" required></label>
-        </div>
-        <div style="margin-bottom: 1rem;">
-            <label>Trennzeichen: <input type="text" name="delimiter" value="," maxlength="1" style="width:3rem"></label>
-        </div>
-        <button type="submit" style="padding: 0.8rem 1.5rem; background: #007bff; color: white; border: none; border-radius: 5px;">CSV-Datei hochladen</button>
-    </form>
+    .field-stack {
+        display: grid;
+        gap: 0.65rem;
+    }
 
-    <div style="background: #e3f2fd; padding: 1rem; border-radius: 5px;">
-        <h4>Erwartete Spalten:</h4>
-        <p>Mindestens erforderlich: <strong>Nachname</strong> und <strong>Vorname</strong></p>
-        <p>Optional: <strong>Kürzel</strong>, <strong>E-Mail</strong>, <strong>Fachbereich</strong></p>
-        <p><small>Deutsche und englische Spaltennamen werden automatisch erkannt.</small></p>
+    .note {
+        padding: 0.8rem;
+        border-radius: 12px;
+        border: 1px solid #bfdbfe;
+        background: #eff6ff;
+        color: #1e3a8a;
+    }
+
+    .note.green {
+        border-color: #86efac;
+        background: #f0fdf4;
+        color: #14532d;
+    }
+
+    .note.warn {
+        border-color: #fcd34d;
+        background: #fffbeb;
+        color: #78350f;
+    }
+
+    @media (max-width: 980px) {
+        .admin-grid-2 {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="section-head">
+    <div>
+        <h2>Admin - Daten Import</h2>
+        <p>Importieren, sichern und konfigurieren Sie die Datenbasis der Anwendung.</p>
     </div>
 </div>
 
-<!-- Stundenplan GPU Import -->
-<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #28a745;">
-    <h3>⏰ Stundenplan Import (GPU001.TXT)</h3>
-    <p>Importieren Sie Unterrichtsstunden aus der GPU001.TXT-Datei für realistische Aufsichtspläne.</p>
+<div class="admin-grid-2">
+    <div class="page-card info">
+        <h3>Lehrkräfte CSV Import</h3>
+        <p>Laden Sie hier eine CSV-Datei mit Lehrkräften hoch.</p>
 
-    <form method="post" action="/admin/import-gpu" enctype="multipart/form-data" style="margin-bottom: 1rem;">
-        <div style="margin-bottom: 1rem;">
+        <form method="post" action="/admin/teachers/upload" enctype="multipart/form-data" class="field-stack">
+            <label>Datei (CSV): <input type="file" name="file" accept=".csv" required></label>
+            <label>Trennzeichen: <input type="text" name="delimiter" value="," maxlength="1" style="width:4rem"></label>
+            <div>
+                <button type="submit" class="btn btn-primary">CSV-Datei hochladen</button>
+            </div>
+        </form>
+
+        <div class="note">
+            <strong>Erwartete Spalten:</strong>
+            <p>Mindestens erforderlich: <strong>Nachname</strong> und <strong>Vorname</strong></p>
+            <p>Optional: <strong>Kürzel</strong>, <strong>E-Mail</strong>, <strong>Fachbereich</strong></p>
+            <p><small>Deutsche und englische Spaltennamen werden automatisch erkannt.</small></p>
+        </div>
+    </div>
+
+    <div class="page-card success">
+        <h3>Stundenplan Import (GPU001.TXT)</h3>
+        <p>Importieren Sie Unterrichtsstunden für realistische Aufsichtspläne.</p>
+
+        <form method="post" action="/admin/import-gpu" enctype="multipart/form-data" class="field-stack">
             <label>GPU001.TXT Datei: <input type="file" name="file" accept=".TXT,.txt" required></label>
-        </div>
-        <button type="submit" style="padding: 0.8rem 1.5rem; background: #28a745; color: white; border: none; border-radius: 5px;">📅 Stundenplan importieren</button>
-    </form>
-
-    <div style="background: #e8f5e8; padding: 1rem; border-radius: 5px;">
-        <h4>Format der GPU001.TXT:</h4>
-        <p><strong>Spalte 3:</strong> Kürzel der Lehrkraft (z.B. "HOO")</p>
-        <p><strong>Spalte 6:</strong> Wochentag (1=Mo, 2=Di, 3=Mi, 4=Do, 5=Fr)</p>
-        <p><strong>Spalte 7:</strong> Unterrichtsstunde (1-20, inkl. Nachmittag)</p>
-        <p><small><strong>Beispiel:</strong> 4063;"12ZU4A";"HOO";"ENG";"3035";2;13;;</small></p>
-        <p><small>Lehrkräfte können nur Aufsicht machen, wenn sie in der betreffenden Stunde keinen Unterricht haben.</small></p>
-        <p><small><strong>Hinweis:</strong> Die Anwesenheitstage werden automatisch aus dem Stundenplan abgeleitet. Sie können diese danach bei Bedarf manuell anpassen.</small></p>
-    </div>
-
-    <div style="margin-top: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">
-        <form method="post" action="/admin/update-attendance-from-lessons" onsubmit="return confirm('Anwesenheitstage aller Lehrkräfte aus dem Stundenplan aktualisieren?');">
-            <button type="submit" style="padding: 0.5rem 1rem; background: #17a2b8; color: white; border: none; border-radius: 5px;">📅 Anwesenheitstage aus Stundenplan setzen</button>
+            <div>
+                <button type="submit" class="btn btn-success">Stundenplan importieren</button>
+            </div>
         </form>
-        <form method="post" action="/admin/clear-lessons" onsubmit="return confirm('Alle Unterrichtsstunden wirklich löschen?');">
-            <button type="submit" style="padding: 0.5rem 1rem; background: #dc3545; color: white; border: none; border-radius: 5px;">🗑️ Alle Stunden löschen</button>
-        </form>
-    </div>
 
-    {% if lesson_stats %}
-    <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
-        <h4 style="margin-top: 0;">📊 Aktuelle Stundenplan-Statistiken:</h4>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-            <div>
-                <strong>Gesamte Unterrichtsstunden:</strong> {{ lesson_stats.total_lessons }}
-            </div>
-            <div>
-                <strong>Lehrkräfte mit Stunden:</strong> {{ lesson_stats.teachers_with_lessons }}
-            </div>
-            <div>
-                <strong>Unbekannte Kürzel gefunden:</strong> {{ lesson_stats.unknown_teachers }}
-            </div>
+        <div class="note green">
+            <strong>Format der GPU001.TXT:</strong>
+            <p><strong>Spalte 3:</strong> Kürzel der Lehrkraft</p>
+            <p><strong>Spalte 6:</strong> Wochentag (1=Mo ... 5=Fr)</p>
+            <p><strong>Spalte 7:</strong> Unterrichtsstunde (1-20)</p>
+            <p><small><strong>Beispiel:</strong> 4063;"12ZU4A";"HOO";"ENG";"3035";2;13;;</small></p>
         </div>
 
-        {% if lesson_stats.lessons_by_day %}
-        <div style="margin-top: 1rem;">
-            <strong>Stunden pro Wochentag:</strong> {% for day, count in lesson_stats.lessons_by_day.items() %}
-            <span style="margin: 0 10px; padding: 2px 6px; background: #e9ecef; border-radius: 3px;">
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.8rem;">
+            <form method="post" action="/admin/update-attendance-from-lessons" onsubmit="return confirm('Anwesenheitstage aller Lehrkräfte aus dem Stundenplan aktualisieren?');">
+                <button type="submit" class="btn" style="background:#0891b2;color:#fff;">Anwesenheitstage aus Stundenplan setzen</button>
+            </form>
+            <form method="post" action="/admin/clear-lessons" onsubmit="return confirm('Alle Unterrichtsstunden wirklich löschen?');">
+                <button type="submit" class="btn btn-danger">Alle Stunden löschen</button>
+            </form>
+        </div>
+
+        {% if lesson_stats %}
+        <div class="page-card" style="margin-top:0.9rem; margin-bottom:0;">
+            <h3 style="font-size:1rem; margin-bottom:0.5rem;">Aktuelle Stundenplan-Statistiken</h3>
+            <div style="display:grid; gap:0.35rem;">
+                <div><strong>Gesamte Unterrichtsstunden:</strong> {{ lesson_stats.total_lessons }}</div>
+                <div><strong>Lehrkräfte mit Stunden:</strong> {{ lesson_stats.teachers_with_lessons }}</div>
+                <div><strong>Unbekannte Kürzel gefunden:</strong> {{ lesson_stats.unknown_teachers }}</div>
+            </div>
+            {% if lesson_stats.lessons_by_day %}
+            <p><strong>Stunden pro Wochentag:</strong></p>
+            <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
+                {% for day, count in lesson_stats.lessons_by_day.items() %}
+                <span style="padding: 0.2rem 0.45rem; background: #e2e8f0; border-radius: 999px; font-size: 0.85rem;">
                     {{ day }}: {{ count }}
-                </span> {% endfor %}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
         {% endif %}
     </div>
-    {% endif %}
 </div>
 
-<!-- Update Checker -->
-<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #6f42c1;">
-    <h3>🔄 Update-Verwaltung</h3>
-    <p>Prüfen Sie hier nach verfügbaren Updates für die Anwendung.</p>
-
-    <div id="update-status" style="margin-bottom: 1rem; padding: 1rem; border-radius: 5px; background: #e3f2fd;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span>Aktuelle Version:</span>
-            <span id="current-version" style="font-weight: bold;">Wird geladen...</span>
-            <button id="check-updates-btn" onclick="checkForUpdates()" style="padding: 0.5rem 1rem; background: #6f42c1; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                Updates prüfen
-            </button>
-        </div>
+<div class="page-card">
+    <div class="section-head">
+        <h3 style="margin:0;">Update-Verwaltung</h3>
+        <button id="check-updates-btn" onclick="checkForUpdates()" class="btn nav-admin" style="color:#fff; background:#7c3aed;">Updates prüfen</button>
     </div>
-
-    <div id="update-info" style="display: none; margin-top: 1rem; padding: 1rem; border-radius: 5px; background: #d4edda; border: 1px solid #c3e6cb;">
-        <!-- Update-Informationen werden hier angezeigt -->
+    <div id="update-status" class="note" style="margin-bottom:0.7rem;">
+        <span>Aktuelle Version: </span>
+        <strong id="current-version">Wird geladen...</strong>
     </div>
+    <div id="update-info" style="display:none;"></div>
 </div>
 
-<!-- Datenbank-Verwaltung -->
-<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #007bff;">
-    <h3>🗂️ Aktive Datenbank auswählen</h3>
+<div class="page-card info">
+    <h3>Aktive Datenbank auswählen</h3>
     <p>Wählen Sie hier, welche Datenbank-Datei die Anwendung verwenden soll.</p>
 
-    <div style="margin-top: 1rem; margin-bottom: 1rem; padding: 0.9rem; border-radius: 5px; background: #eef4ff; border-left: 3px solid #007bff;">
+    <div class="note" style="margin-bottom:0.7rem;">
         <div><strong>Aktive Datenbank:</strong> <code>{{ current_db_path }}</code></div>
         <div><strong>Quelle:</strong> {{ db_path_source }}</div>
         <div>
@@ -121,69 +149,59 @@
         <div><small>Konfigurationsdatei: <code>{{ db_config_path }}</code></small></div>
     </div>
 
-    <form method="post" action="/admin/database/select" style="margin-bottom: 0.8rem;">
-        <label for="database_path"><strong>Datenbankpfad:</strong></label>
-        <input id="database_path" name="database_path" list="dbCandidates" value="{{ configured_db_path or current_db_path }}" required style="width: 100%; margin-top: 0.4rem; margin-bottom: 0.6rem; padding: 0.5rem; border: 1px solid #007bff; border-radius: 4px; font-family: monospace;">
+    <form method="post" action="/admin/database/select" class="field-stack" style="margin-bottom:0.6rem;">
+        <label for="database_path"><strong>Datenbankpfad</strong></label>
+        <input id="database_path" name="database_path" list="dbCandidates" value="{{ configured_db_path or current_db_path }}" required style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">
         <datalist id="dbCandidates">
             {% for path in db_candidates %}
             <option value="{{ path }}"></option>
             {% endfor %}
         </datalist>
-        <button type="submit" style="padding: 0.6rem 1rem; background: #007bff; color: white; border: none; border-radius: 4px;">💾 Datenbankpfad speichern</button>
+        <div>
+            <button type="submit" class="btn btn-primary">Datenbankpfad speichern</button>
+        </div>
     </form>
 
     <form method="post" action="/admin/database/reset" onsubmit="return confirm('Gespeicherte Datenbank-Auswahl zurücksetzen und Standardpfad verwenden?');">
-        <button type="submit" style="padding: 0.5rem 0.9rem; background: #6c757d; color: white; border: none; border-radius: 4px;">↩️ Auf Standardpfad zurücksetzen</button>
+        <button type="submit" class="btn btn-muted">Auf Standardpfad zurücksetzen</button>
     </form>
 
-    <p style="margin-top: 0.8rem;"><small><strong>Hinweis:</strong> Änderungen werden nach einem Neustart der Anwendung wirksam.</small></p>
+    <p><small><strong>Hinweis:</strong> Änderungen werden nach einem Neustart wirksam.</small></p>
 </div>
 
-<!-- Datenbank-Verwaltung -->
-<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 2px solid #007bff;">
-    <h3>💾 Datenbank-Verwaltung</h3>
+<div class="page-card warn">
+    <h3>Datenbank-Verwaltung</h3>
     <p>Sichern Sie Ihre Daten oder stellen Sie sie aus einem Backup wieder her.</p>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
-        <!-- Backup -->
-        <div style="background: #e8f5e8; padding: 1rem; border-radius: 6px; border-left: 3px solid #27ae60;">
-            <h4 style="margin-top: 0; color: #27ae60;">📥 Backup erstellen</h4>
-            <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #555;">
-                Laden Sie eine Sicherungskopie Ihrer Datenbank herunter.
-            </p>
-            <a href="/backup/download" style="display: inline-block; padding: 0.6rem 1rem; background: #27ae60; color: white; text-decoration: none; border-radius: 4px; font-size: 0.9rem;">
-                📥 Backup herunterladen
-            </a>
+    <div class="admin-grid-2">
+        <div class="note green">
+            <h4 style="margin-top:0; margin-bottom:0.45rem;">Backup erstellen</h4>
+            <p>Laden Sie eine Sicherungskopie Ihrer Datenbank herunter.</p>
+            <a href="/backup/download" class="btn btn-success">Backup herunterladen</a>
         </div>
 
-        <!-- Restore -->
-        <div style="background: #fff3cd; padding: 1rem; border-radius: 6px; border-left: 3px solid #ffc107;">
-            <h4 style="margin-top: 0; color: #856404;">📤 Backup wiederherstellen</h4>
-            <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #555;">
-                Stellen Sie Ihre Datenbank aus einer .db-Datei wieder her.
-            </p>
-            <form id="restoreForm" enctype="multipart/form-data" style="margin: 0;">
-                <input type="file" id="backupFile" name="file" accept=".db" required style="width: 100%; padding: 0.4rem; border: 1px solid #ffc107; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                <button type="button" onclick="restoreDatabase()" style="padding: 0.6rem 1rem; background: #ffc107; color: #856404; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">
-                    📤 Wiederherstellen
-                </button>
+        <div class="note warn">
+            <h4 style="margin-top:0; margin-bottom:0.45rem;">Backup wiederherstellen</h4>
+            <p>Stellen Sie Ihre Datenbank aus einer `.db`-Datei wieder her.</p>
+            <form id="restoreForm" enctype="multipart/form-data" class="field-stack">
+                <input type="file" id="backupFile" name="file" accept=".db" required>
+                <div>
+                    <button type="button" onclick="restoreDatabase(event)" class="btn btn-warn">Wiederherstellen</button>
+                </div>
             </form>
         </div>
     </div>
-    
-    <div style="margin-top: 1rem; padding: 0.8rem; background: #f8d7da; border-radius: 4px; border-left: 3px solid #dc3545;">
-        <small style="color: #721c24;">
-            <strong>⚠️ Hinweis:</strong> Bei der Wiederherstellung gehen alle aktuellen Daten verloren! Erstellen Sie vorher ein Backup.
-        </small>
+
+    <div class="note warn" style="margin-top:0.8rem;">
+        <strong>Wichtig:</strong> Bei der Wiederherstellung gehen alle aktuellen Daten verloren.
     </div>
 </div>
 
-<div style="margin-top: 2rem;">
-    <a href="/admin/teachers" style="text-decoration: none; padding: 0.8rem 1.5rem; background: #6c757d; color: white; border-radius: 5px;">👥 Lehrkräfte verwalten</a>
+<div style="margin-top: 1rem;">
+    <a href="/admin/teachers" class="btn btn-muted">Lehrkräfte verwalten</a>
 </div>
 
 <script>
-    // Version beim Laden der Seite abrufen
     document.addEventListener('DOMContentLoaded', function() {
         loadCurrentVersion();
         checkForUpdates(true);
@@ -216,22 +234,24 @@
 
             if (data.error) {
                 updateInfo.innerHTML = `
-                <h4 style="margin-top: 0; color: #721c24;">❌ Fehler</h4>
-                <p>${data.message}</p>
-                <p><strong>Manueller Update-Check:</strong></p>
-                <ol>
-                    <li>Besuchen Sie: <a href="https://github.com/olivertiemann/py-aufsichtsplan/releases" target="_blank">GitHub Releases</a></li>
-                    <li>Laden Sie die neueste <code>Aufsichtsplan.exe</code> herunter</li>
-                    <li>Ersetzen Sie die aktuelle EXE-Datei</li>
-                </ol>
+                <div class="note warn">
+                    <h4 style="margin-top:0;">Fehler</h4>
+                    <p>${data.message}</p>
+                    <p><strong>Manueller Update-Check:</strong></p>
+                    <ol>
+                        <li>Besuchen Sie: <a href="https://github.com/olivertiemann/py-aufsichtsplan/releases" target="_blank">GitHub Releases</a></li>
+                        <li>Laden Sie die neueste <code>Aufsichtsplan.exe</code> herunter</li>
+                        <li>Ersetzen Sie die aktuelle EXE-Datei</li>
+                    </ol>
+                </div>
                 `;
                 updateInfo.style.display = 'block';
             } else if (data.update_available) {
                 const manualInstructions = `
-                <div style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: 5px;">
+                <div class="note" style="margin-top:0.6rem;">
                     <p><strong>Manuelle Installation:</strong></p>
                     <ol>
-                        <li><a href="${data.download_url}" target="_blank" style="color: #0066cc; font-weight: bold;">Aufsichtsplan.exe herunterladen</a></li>
+                        <li><a href="${data.download_url}" target="_blank" style="font-weight:700;">Aufsichtsplan.exe herunterladen</a></li>
                         <li>Aktuelle Anwendung beenden</li>
                         <li>Alte EXE-Datei ersetzen</li>
                         <li>Neue Version starten</li>
@@ -239,41 +259,44 @@
                 </div>`;
 
                 const automaticInstallControls = data.auto_install_available ? `
-                <div style="margin: 1rem 0; padding: 1rem; background: #e2f0d9; border-radius: 5px; border-left: 3px solid #28a745;">
-                    <p style="margin: 0 0 0.5rem 0;"><strong>Automatische Installation verfügbar:</strong></p>
-                    <button id="install-update-btn" onclick="installUpdate()" style="padding: 0.6rem 1rem; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">🚀 Update jetzt installieren</button>
-                    <p id="install-status" style="margin-top: 0.6rem; font-size: 0.9rem; color: #155724; display: none;"></p>
-                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: #155724;">Die Anwendung wird nach der Installation automatisch beendet und neu gestartet.</p>
+                <div class="note green" style="margin-top:0.6rem;">
+                    <p><strong>Automatische Installation verfügbar:</strong></p>
+                    <button id="install-update-btn" onclick="installUpdate()" class="btn btn-success">Update jetzt installieren</button>
+                    <p id="install-status" style="margin-top: 0.45rem; display: none;"></p>
                 </div>
                 ` : '';
 
                 const installationSection = `${automaticInstallControls}${manualInstructions}`;
 
                 updateInfo.innerHTML = `
-                <h4 style="margin-top: 0; color: #0c5460;">🎉 Update verfügbar!</h4>
-                <p><strong>Aktuelle Version:</strong> v${data.current_version}</p>
-                <p><strong>Neue Version:</strong> v${data.latest_version}</p>
-                <p><strong>Größe:</strong> ${data.size_mb} MB</p>
-                <p><strong>Veröffentlicht:</strong> ${new Date(data.published_at).toLocaleDateString('de-DE')}</p>
-                ${installationSection}
-                ${data.release_notes ? `<div style="margin-top: 1rem;"><h5>Änderungen:</h5><pre style="white-space: pre-wrap; font-size: 0.9em;">${data.release_notes}</pre></div>` : ''}
+                <div class="note green">
+                    <h4 style="margin-top:0;">Update verfügbar</h4>
+                    <p><strong>Aktuelle Version:</strong> v${data.current_version}</p>
+                    <p><strong>Neue Version:</strong> v${data.latest_version}</p>
+                    <p><strong>Größe:</strong> ${data.size_mb} MB</p>
+                    <p><strong>Veröffentlicht:</strong> ${new Date(data.published_at).toLocaleDateString('de-DE')}</p>
+                    ${installationSection}
+                    ${data.release_notes ? `<div style="margin-top: 1rem;"><h5>Änderungen:</h5><pre style="white-space: pre-wrap; font-size: 0.9em;">${data.release_notes}</pre></div>` : ''}
+                </div>
                 `;
                 updateInfo.style.display = 'block';
             } else {
                 updateInfo.innerHTML = `
-                <h4 style="margin-top: 0; color: #155724;">✅ Aktuell</h4>
-                <p>${data.message}</p>
-                <p>Version: v${data.current_version}</p>
+                <div class="note green">
+                    <h4 style="margin-top:0;">Aktuell</h4>
+                    <p>${data.message}</p>
+                    <p>Version: v${data.current_version}</p>
+                </div>
                 `;
                 updateInfo.style.display = 'block';
             }
 
         } catch (error) {
             updateInfo.innerHTML = `
-            <div style="color: #721c24; background: #f8d7da; padding: 1rem; border-radius: 5px;">
+            <div class="note warn">
                 <strong>Fehler:</strong> ${error.message}
             </div>
-        `;
+            `;
             updateInfo.style.display = 'block';
         } finally {
             if (!auto) {
@@ -294,7 +317,7 @@
         installButton.disabled = true;
         installButton.textContent = 'Installiere...';
         statusElement.style.display = 'block';
-        statusElement.style.color = '#155724';
+        statusElement.style.color = '#14532d';
         statusElement.textContent = 'Update wird heruntergeladen und installiert...';
 
         try {
@@ -303,41 +326,40 @@
 
             if (!response.ok || !data.success) {
                 const message = data && data.message ? data.message : 'Unbekannter Fehler beim Installieren des Updates.';
-                statusElement.style.color = '#721c24';
-                statusElement.textContent = `❌ ${message}`;
+                statusElement.style.color = '#991b1b';
+                statusElement.textContent = `Fehler: ${message}`;
                 installButton.disabled = false;
-                installButton.textContent = '🚀 Update jetzt installieren';
+                installButton.textContent = 'Update jetzt installieren';
                 return;
             }
 
-            statusElement.style.color = '#155724';
-            statusElement.textContent = '✅ Update erfolgreich gestartet. Die Anwendung wird automatisch beendet.';
+            statusElement.style.color = '#14532d';
+            statusElement.textContent = 'Update erfolgreich gestartet. Die Anwendung wird automatisch beendet.';
             installButton.textContent = 'Installation läuft...';
         } catch (error) {
-            statusElement.style.color = '#721c24';
-            statusElement.textContent = `❌ ${error.message}`;
+            statusElement.style.color = '#991b1b';
+            statusElement.textContent = `Fehler: ${error.message}`;
             installButton.disabled = false;
-            installButton.textContent = '🚀 Update jetzt installieren';
+            installButton.textContent = 'Update jetzt installieren';
         }
     }
 
-    // Datenbank-Restore Funktionalität
-    async function restoreDatabase() {
+    async function restoreDatabase(event) {
         const fileInput = document.getElementById('backupFile');
         const file = fileInput.files[0];
 
         if (!file) {
-            alert('❌ Bitte wählen Sie eine Backup-Datei aus.');
+            alert('Bitte wählen Sie eine Backup-Datei aus.');
             return;
         }
 
         if (!file.name.endsWith('.db')) {
-            alert('❌ Bitte wählen Sie eine gültige .db-Datei aus.');
+            alert('Bitte wählen Sie eine gültige .db-Datei aus.');
             return;
         }
 
         const confirmed = confirm(
-            '⚠️ ACHTUNG: Diese Aktion überschreibt alle aktuellen Daten!\n\n' +
+            'Achtung: Diese Aktion überschreibt alle aktuellen Daten!\n\n' +
             'Alle Lehrkräfte, Stockwerke und Aufsichtspläne werden durch die Daten aus der Backup-Datei ersetzt.\n\n' +
             'Möchten Sie wirklich fortfahren?'
         );
@@ -349,11 +371,13 @@
         const formData = new FormData();
         formData.append('file', file);
 
-        // Button deaktivieren und Loading-Status anzeigen
-        const button = event.target;
-        const originalText = button.innerHTML;
-        button.innerHTML = '⏳ Wiederherstellen...';
-        button.disabled = true;
+        const button = event && event.target ? event.target : null;
+        const originalText = button ? button.innerHTML : '';
+
+        if (button) {
+            button.innerHTML = 'Wiederherstellen...';
+            button.disabled = true;
+        }
 
         try {
             const response = await fetch('/backup/restore', {
@@ -364,17 +388,17 @@
             const result = await response.json();
 
             if (response.ok) {
-                alert('✅ ' + result.message + '\n\nDie Seite wird neu geladen...');
+                alert(result.message + '\n\nDie Seite wird neu geladen...');
                 window.location.reload();
             } else {
                 throw new Error(result.detail || 'Unbekannter Fehler');
             }
         } catch (error) {
-            alert('❌ Fehler beim Wiederherstellen: ' + error.message);
-
-            // Button wieder aktivieren
-            button.innerHTML = originalText;
-            button.disabled = false;
+            alert('Fehler beim Wiederherstellen: ' + error.message);
+            if (button) {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
         }
     }
 </script>

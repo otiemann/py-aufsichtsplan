@@ -1,84 +1,91 @@
-{% extends "base.html" %} {% block content %}
-<h2>Plan erzeugt</h2>
+{% extends "base.html" %}
 
-{% if period_start_label and period_end_label and period_weeks %}
-<div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #ddd;">
-    <strong>Gültig:</strong> {{ period_start_label }} bis {{ period_end_label }} ({{ period_weeks }} Wochen)
-    <div style="color: #666; font-size: 0.95rem; margin-top: 0.25rem;">
-        Der Wochenplan (Mo–Fr) wird identisch in jeder Woche angewendet.
+{% block content %}
+<div class="section-head">
+    <div>
+        <h2>Plan erzeugt</h2>
+        {% if period_start_label and period_end_label and period_weeks %}
+        <p><strong>Gültig:</strong> {{ period_start_label }} bis {{ period_end_label }} ({{ period_weeks }} Wochen)</p>
+        {% endif %}
     </div>
 </div>
-{% endif %}
 
-{% include 'plan/week_grid.html' %}
-
-<h3>Aufsichten je Lehrkraft (pro Woche)</h3>
-<div style="display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.6rem 0;">
-    <label for="teacherCountFilter" style="font-weight: 600;">Filter:</label>
-    <select id="teacherCountFilter" style="padding: 0.25rem 0.4rem;">
-        <option value="all">Alle Lehrkräfte</option>
-        <option value="reached">Nur Soll erfüllt</option>
-        <option value="under">Nur unter Soll</option>
-    </select>
-    <span id="teacherCountFilterSummary" style="color: #666; font-size: 0.9rem;"></span>
+<div class="page-card">
+    {% include 'plan/week_grid.html' %}
 </div>
-<table class="teacher-counts-table">
-    <thead>
-        <tr>
-            <th>Kürzel</th>
-            <th>Nachname</th>
-            <th>Vorname</th>
-            <th>Anzahl Aufsichten</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for c in counts %}
-        {% set teacher_key = c.abbreviation if c.abbreviation else c.last_name ~ ', ' ~ c.first_name %}
-        {% set reached_max = (c.target and c.count >= c.target) %}
-        <tr class="teacher-count-row" data-teacher-key="{{ teacher_key }}" data-target="{{ c.target or 0 }}" {% if reached_max %}style="background: #fff3cd;"{% endif %}>
-            <td>
-                {{ c.abbreviation }}
-                {% if c.exempt %}
-                    <span
-                        title="Lehrkraft ist als 'keine Aufsicht' markiert und wird bei der Planung nicht eingeplant."
-                        aria-label="Lehrkraft ist als 'keine Aufsicht' markiert und wird bei der Planung nicht eingeplant."
-                        style="display:inline-block; margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:999px; background:#e8f4ff; border:1px solid #b9d9ff; color:#0b5aa2; font-size:0.72rem; font-weight:600;"
-                    >
-                        Keine Aufsicht
+
+<div class="page-card">
+    <h3>Aufsichten je Lehrkraft (pro Woche)</h3>
+    <div style="display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.8rem 0; flex-wrap: wrap;">
+        <label for="teacherCountFilter" style="font-weight: 700;">Filter:</label>
+        <select id="teacherCountFilter" style="max-width: 240px;">
+            <option value="all">Alle Lehrkräfte</option>
+            <option value="reached">Nur Soll erfüllt</option>
+            <option value="under">Nur unter Soll</option>
+        </select>
+        <span id="teacherCountFilterSummary" style="color: #64748b; font-size: 0.9rem;"></span>
+    </div>
+
+    <table class="teacher-counts-table">
+        <thead>
+            <tr>
+                <th>Kürzel</th>
+                <th>Nachname</th>
+                <th>Vorname</th>
+                <th>Anzahl Aufsichten</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in counts %}
+            {% set teacher_key = c.abbreviation if c.abbreviation else c.last_name ~ ', ' ~ c.first_name %}
+            {% set reached_max = (c.target and c.count >= c.target) %}
+            <tr class="teacher-count-row" data-teacher-key="{{ teacher_key }}" data-target="{{ c.target or 0 }}" {% if reached_max %}style="background: #fff7ed;"{% endif %}>
+                <td>
+                    {{ c.abbreviation }}
+                    {% if c.exempt %}
+                        <span
+                            title="Lehrkraft ist als 'keine Aufsicht' markiert und wird bei der Planung nicht eingeplant."
+                            aria-label="Lehrkraft ist als 'keine Aufsicht' markiert und wird bei der Planung nicht eingeplant."
+                            style="display:inline-block; margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:999px; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; font-size:0.72rem; font-weight:700;"
+                        >
+                            Keine Aufsicht
+                        </span>
+                    {% endif %}
+                </td>
+                <td>{{ c.last_name }}</td>
+                <td>{{ c.first_name }}</td>
+                <td>
+                    <span class="teacher-count-value" {% if reached_max %}style="background: #fed7aa; padding: 0.1rem 0.4rem; border-radius: 0.4rem;"{% endif %}>
+                        {{ c.count }}
                     </span>
-                {% endif %}
-            </td>
-            <td>{{ c.last_name }}</td>
-            <td>{{ c.first_name }}</td>
-            <td>
-                <span class="teacher-count-value" {% if reached_max %}style="background: #ffe0a3; padding: 0.1rem 0.4rem; border-radius: 0.4rem;"{% endif %}>
-                    {{ c.count }}
-                </span>
-                {% if c.target %}
-                    <small style="color: #777;">/ {{ c.target }}</small>
-                {% endif %}
-            </td>
-        </tr>
-        {% else %}
-        <tr>
-            <td colspan="4">Keine Daten</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+                    {% if c.target %}
+                        <small style="color: #64748b;">/ {{ c.target }}</small>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4">Keine Daten.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 
-{% if total_assignments is defined %}
-<p style="margin-top: 0.5rem; color: #444;">
-    <strong>Summe der Aufsichten:</strong> <span id="weeklyTotalAssignments">{{ total_assignments }}</span> pro Woche
-    {% if total_assignments_period is defined %}
-        <br><strong>Summe im Zeitraum:</strong> <span id="periodTotalAssignments">{{ total_assignments_period }}</span>
+    {% if total_assignments is defined %}
+    <p>
+        <strong>Summe der Aufsichten:</strong> <span id="weeklyTotalAssignments">{{ total_assignments }}</span> pro Woche
+        {% if total_assignments_period is defined %}
+            <br><strong>Summe im Zeitraum:</strong> <span id="periodTotalAssignments">{{ total_assignments_period }}</span>
+        {% endif %}
+    </p>
     {% endif %}
-</p>
-{% endif %}
+</div>
 
-<p>
-    <a href="/plan/export/pdf">PDF herunterladen</a> |
-    <a href="/plan/export/pdf-by-floor">PDF (nach Stockwerken) herunterladen</a> |
-    <a href="/plan/export/gpu009">GPU009.txt herunterladen</a>
-</p>
+<div class="page-card soft">
+    <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+        <a href="/plan/export/pdf" class="btn btn-primary">PDF herunterladen</a>
+        <a href="/plan/export/pdf-by-floor" class="btn btn-danger">PDF (nach Stockwerken)</a>
+        <a href="/plan/export/gpu009" class="btn btn-muted">GPU009.txt</a>
+    </div>
+</div>
 {% endblock %}

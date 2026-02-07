@@ -6,93 +6,381 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pausenaufsicht Admin</title>
     <style>
-        body {
-            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif;
-            margin: 2rem;
+        :root {
+            --bg: #f3f6fb;
+            --bg-soft: #eef2f8;
+            --surface: #ffffff;
+            --surface-alt: #f8fafc;
+            --text: #0f172a;
+            --text-soft: #475569;
+            --border: #dbe3ef;
+            --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            --radius: 14px;
+            --primary: #2563eb;
+            --danger: #dc2626;
+            --success: #16a34a;
+            --warn: #d97706;
         }
-        
-        header {
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            color: var(--text);
+            background:
+                radial-gradient(1200px 600px at 100% -50%, #dbeafe 0%, transparent 70%),
+                radial-gradient(1000px 500px at -20% 120%, #dcfce7 0%, transparent 70%),
+                var(--bg);
+            font-family: "Avenir Next", "Nunito Sans", "Segoe UI Variable", "Trebuchet MS", sans-serif;
+            line-height: 1.45;
+        }
+
+        a {
+            color: var(--primary);
+        }
+
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            backdrop-filter: blur(8px);
+            background: rgba(248, 250, 252, 0.9);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .app-header-inner {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0.9rem 1rem;
             display: flex;
+            gap: 1rem;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.7rem;
+            min-width: 230px;
+        }
+
+        .logo {
+            width: 44px;
+            height: 44px;
+            object-fit: contain;
+            border-radius: 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 3px;
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            letter-spacing: 0.01em;
+        }
+
+        .app-nav {
+            display: flex;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+
+        .app-nav-link,
+        .app-nav button {
+            border: 1px solid transparent;
+            border-radius: 10px;
+            padding: 0.45rem 0.75rem;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: #0f172a;
+            background: #e5e7eb;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+
+        .app-nav-link:hover,
+        .app-nav button:hover {
+            transform: translateY(-1px);
+            filter: saturate(1.08);
+        }
+
+        .app-nav-link.active {
+            color: #fff;
+            box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.14);
+        }
+
+        .nav-home {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .nav-home.active {
+            background: #2563eb;
+        }
+
+        .nav-teachers {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .nav-teachers.active {
+            background: #dc2626;
+        }
+
+        .nav-floors {
+            background: #fef3c7;
+            color: #b45309;
+        }
+
+        .nav-floors.active {
+            background: #d97706;
+        }
+
+        .nav-plan {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .nav-plan.active {
+            background: #16a34a;
+        }
+
+        .nav-admin {
+            background: #ede9fe;
+            color: #5b21b6;
+        }
+
+        .nav-admin.active {
+            background: #7c3aed;
+        }
+
+        #shutdownButton {
+            background: #111827;
+            color: #fff;
+        }
+
+        .main {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 1.2rem 1rem 2rem;
+        }
+
+        h2 {
+            font-size: clamp(1.45rem, 3vw, 2rem);
+            margin: 0 0 1rem;
+            line-height: 1.2;
+        }
+
+        h3 {
+            margin: 0.2rem 0 0.8rem;
+            font-size: 1.2rem;
+        }
+
+        p {
+            margin: 0.35rem 0 0.8rem;
+            color: var(--text-soft);
+        }
+
+        .page-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .page-card.soft {
+            background: var(--surface-alt);
+        }
+
+        .page-card.success {
+            border-color: #86efac;
+            background: linear-gradient(145deg, #f0fdf4 0%, #ecfdf3 100%);
+        }
+
+        .page-card.info {
+            border-color: #93c5fd;
+            background: linear-gradient(145deg, #eff6ff 0%, #f0f9ff 100%);
+        }
+
+        .page-card.warn {
+            border-color: #fcd34d;
+            background: linear-gradient(145deg, #fffbeb 0%, #fefce8 100%);
+        }
+
+        .section-head {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
             gap: 1rem;
-            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.8rem;
         }
-        
-        nav a {
-            margin-right: 1rem;
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
         }
-        
+
+        input[type="text"],
+        input[type="number"],
+        input[type="date"],
+        input[type="file"],
+        select,
+        textarea {
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            border-radius: 10px;
+            padding: 0.5rem 0.65rem;
+            min-height: 2.2rem;
+        }
+
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible,
+        button:focus-visible,
+        a:focus-visible {
+            outline: 2px solid #60a5fa;
+            outline-offset: 2px;
+        }
+
+        button,
+        .btn {
+            border: 1px solid transparent;
+            border-radius: 10px;
+            padding: 0.55rem 0.85rem;
+            background: #e2e8f0;
+            color: #0f172a;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-weight: 700;
+        }
+
+        button:hover,
+        .btn:hover {
+            filter: brightness(0.98);
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: #fff;
+        }
+
+        .btn-success {
+            background: #16a34a;
+            color: #fff;
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: #fff;
+        }
+
+        .btn-warn {
+            background: #d97706;
+            color: #fff;
+        }
+
+        .btn-muted {
+            background: #64748b;
+            color: #fff;
+        }
+
         table {
-            border-collapse: collapse;
             width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
         }
-        
+
         th,
         td {
-            border: 1px solid #ddd;
-            padding: 8px;
-        }
-        
-        th {
-            background: #f5f5f5;
+            border-bottom: 1px solid var(--border);
+            padding: 0.55rem 0.6rem;
             text-align: left;
+            vertical-align: top;
         }
-        
+
+        th {
+            background: #f8fafc;
+            color: #334155;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        tr:hover td {
+            background: #f8fbff;
+        }
+
         .flash {
             position: fixed;
-            top: 90px;
-            right: 20px;
-            background: #e6ffed;
-            border: 1px solid #b7eb8f;
-            padding: .6rem .9rem;
-            border-radius: 6px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+            top: 84px;
+            right: 18px;
+            max-width: 360px;
+            background: #ecfdf5;
+            border: 1px solid #86efac;
+            color: #14532d;
+            padding: 0.6rem 0.85rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
             z-index: 999;
         }
 
-        button:focus-visible,
-        a:focus-visible,
-        input:focus-visible,
-        select:focus-visible {
-            outline: 2px solid #3498db;
-            outline-offset: 2px;
-        }
-        
-        form {
-            margin: 1rem 0;
-        }
-        
-        input[type=file],
-        input[type=text] {
-            padding: .4rem;
-        }
-        
-        button {
-            padding: .5rem .8rem;
-        }
-        
-        .logo {
-            width: 48px;
-            height: 48px;
-            object-fit: contain;
+        @media (max-width: 900px) {
+            .app-header-inner {
+                align-items: stretch;
+            }
+
+            .app-nav {
+                width: 100%;
+            }
+
+            .app-nav-link,
+            .app-nav button {
+                flex: 1 1 auto;
+                justify-content: center;
+                text-align: center;
+            }
+
+            .main {
+                padding-top: 1rem;
+            }
         }
     </style>
 </head>
 
 <body>
-    <header style="background: #f8f9fa; padding: 1rem; margin: -2rem -2rem 2rem -2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto;">
-            <div style="display: flex; align-items: center; gap: 1rem;">
+    {% set current_path = request.url.path %}
+    <header class="app-header">
+        <div class="app-header-inner">
+            <div class="brand">
                 <img src="/static/logo.png" alt="Logo" class="logo" />
-                <h1 style="margin:0; color: #2c3e50;">Pausenaufsicht</h1>
+                <h1>Pausenaufsicht</h1>
             </div>
-            <nav style="display: flex; gap: 1rem;">
-                <a href="/" style="text-decoration: none; padding: 0.5rem 1rem; background: #3498db; color: white; border-radius: 5px;">🏠 Start</a>
-                <a href="/admin/teachers" style="text-decoration: none; padding: 0.5rem 1rem; background: #e74c3c; color: white; border-radius: 5px;">👥 Lehrkräfte</a>
-                <a href="/plan/floors" style="text-decoration: none; padding: 0.5rem 1rem; background: #f39c12; color: white; border-radius: 5px;">🏢 Stockwerke</a>
-                <a href="/plan/generate" style="text-decoration: none; padding: 0.5rem 1rem; background: #27ae60; color: white; border-radius: 5px;">📅 Plan</a>
-                <a href="/admin" style="text-decoration: none; padding: 0.5rem 1rem; background: #8e44ad; color: white; border-radius: 5px;">⚙️ Admin</a>
-                <button onclick="shutdownApp()" style="padding: 0.5rem 1rem; background: #c0392b; color: white; border: none; border-radius: 5px; cursor: pointer;">⏻ Beenden</button>
+            <nav class="app-nav" aria-label="Hauptnavigation">
+                <a href="/" class="app-nav-link nav-home {% if current_path == '/' %}active{% endif %}">Start</a>
+                <a href="/admin/teachers" class="app-nav-link nav-teachers {% if current_path.startswith('/admin/teachers') %}active{% endif %}">Lehrkräfte</a>
+                <a href="/plan/floors" class="app-nav-link nav-floors {% if current_path.startswith('/plan/floors') %}active{% endif %}">Stockwerke</a>
+                <a href="/plan/generate" class="app-nav-link nav-plan {% if current_path.startswith('/plan') and not current_path.startswith('/plan/floors') %}active{% endif %}">Plan</a>
+                <a href="/admin" class="app-nav-link nav-admin {% if current_path == '/admin' %}active{% endif %}">Admin</a>
+                <button id="shutdownButton" onclick="shutdownApp()">Beenden</button>
             </nav>
         </div>
     </header>
@@ -101,46 +389,46 @@
     <div class="flash">{{ request.cookies.get('flash') }}</div>
     {% endif %}
 
-    <main>
+    <main class="main">
         {% block content %}{% endblock %}
     </main>
 
     <script>
         async function shutdownApp() {
-            const confirmed = confirm('Möchten Sie die Anwendung wirklich beenden?\n\nDie Anwendung wird komplett geschlossen und alle ungespeicherten Daten gehen verloren.');
+            const confirmed = confirm('Möchten Sie die Anwendung wirklich beenden?\n\nDie Anwendung wird komplett geschlossen.');
+            if (!confirmed) {
+                return;
+            }
 
-            if (confirmed) {
-                try {
-                    // Zeige Loading-Message
-                    const shutdownButton = document.querySelector('button[onclick="shutdownApp()"]');
-                    const originalText = shutdownButton.innerHTML;
-                    shutdownButton.innerHTML = '⏳ Beende...';
+            const shutdownButton = document.getElementById('shutdownButton');
+            const originalText = shutdownButton ? shutdownButton.innerHTML : 'Beenden';
+
+            try {
+                if (shutdownButton) {
+                    shutdownButton.innerHTML = 'Beende...';
                     shutdownButton.disabled = true;
+                }
 
-                    // Sende Shutdown-Request
-                    const response = await fetch('/shutdown', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        }
-                    });
-
-                    if (response.ok) {
-                        const result = await response.json();
-                        alert('✅ ' + result.message + '\n\nDas Browserfenster kann geschlossen werden.');
-
-                        // Versuche das Fenster zu schließen (funktioniert nur in bestimmten Browsern/Kontexten)
-                        setTimeout(() => {
-                            window.close();
-                        }, 2000);
-                    } else {
-                        throw new Error('Shutdown-Request fehlgeschlagen');
+                const response = await fetch('/shutdown', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
                     }
-                } catch (error) {
-                    alert('❌ Fehler beim Beenden der Anwendung: ' + error.message);
+                });
 
-                    // Stelle Button wieder her
-                    const shutdownButton = document.querySelector('button[onclick="shutdownApp()"]');
+                if (!response.ok) {
+                    throw new Error('Shutdown-Request fehlgeschlagen');
+                }
+
+                const result = await response.json();
+                alert(`${result.message}\n\nDas Browserfenster kann geschlossen werden.`);
+
+                setTimeout(() => {
+                    window.close();
+                }, 1500);
+            } catch (error) {
+                alert('Fehler beim Beenden der Anwendung: ' + error.message);
+                if (shutdownButton) {
                     shutdownButton.innerHTML = originalText;
                     shutdownButton.disabled = false;
                 }

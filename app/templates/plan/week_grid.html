@@ -1,13 +1,33 @@
 <style>
+    #planContainer {
+        overflow-x: auto;
+    }
+
+    #planContainer > table {
+        min-width: 980px;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    #planContainer > table thead tr {
+        background: #f8fafc !important;
+    }
+
+    #planContainer .drop-zone {
+        min-height: 74px !important;
+        background: #fff;
+    }
+
     .unsaved-banner {
         position: sticky;
-        top: 0;
-        z-index: 6;
-        background: #fff3cd;
-        border: 1px solid #ffeeba;
-        color: #856404;
+        top: 76px;
+        z-index: 10;
+        background: #fffbeb;
+        border: 1px solid #fcd34d;
+        color: #92400e;
         padding: 0.6rem 0.9rem;
-        border-radius: 6px;
+        border-radius: 10px;
         margin-bottom: 0.8rem;
         display: none;
     }
@@ -27,8 +47,8 @@
         gap: 0.4rem;
         padding: 0.2rem 0.5rem;
         border-radius: 999px;
-        border: 1px solid #ddd;
-        background: #f8f9fa;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
     }
 
     .floor-container[data-empty="true"] {
@@ -40,6 +60,12 @@
         color: #c0392b;
         font-style: normal;
         font-weight: bold;
+    }
+
+    #editControls {
+        border: 1px solid #86efac !important;
+        border-left: 4px solid #16a34a !important;
+        border-radius: 12px !important;
     }
 </style>
 
