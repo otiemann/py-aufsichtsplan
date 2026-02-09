@@ -7,6 +7,9 @@
         {% if period_start_label and period_end_label and period_weeks %}
         <p><strong>Gültig:</strong> {{ period_start_label }} bis {{ period_end_label }} ({{ period_weeks }} Wochen)</p>
         {% endif %}
+        {% if generation_duration_label %}
+        <p><strong>Erstellt in:</strong> {{ generation_duration_label }} s</p>
+        {% endif %}
     </div>
 </div>
 

@@ -31,8 +31,17 @@
 </div>
 
 <div class="page-card success">
-    <form method="post" action="/plan/generate" style="margin: 0;">
-        <button type="submit" class="btn btn-success" style="font-size: 1rem; padding: 0.8rem 1.2rem;">Plan für Zeitraum erzeugen</button>
+    <form id="generatePlanForm" method="post" action="/plan/generate" style="margin: 0;">
+        <button
+            id="generatePlanButton"
+            type="submit"
+            class="btn btn-success"
+            style="font-size: 1rem; padding: 0.8rem 1.2rem;"
+            data-default-label="Plan für Zeitraum erzeugen"
+            data-loading-label="Berechne... bitte warten"
+        >
+            Plan für Zeitraum erzeugen
+        </button>
     </form>
     <p>Erzeugt einen Wochenplan (Mo–Fr) und übernimmt ihn identisch für den gesamten Zeitraum.</p>
     <p><strong>Hinweis:</strong> Der aktuelle Zeitraum-Plan wird überschrieben.</p>
@@ -118,4 +127,19 @@
         <a href="/plan/export/gpu009" class="btn btn-muted">GPU009.txt</a>
     </div>
 </div>
+
+<script>
+(() => {
+    const form = document.getElementById("generatePlanForm");
+    const button = document.getElementById("generatePlanButton");
+    if (!form || !button) {
+        return;
+    }
+    form.addEventListener("submit", () => {
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = button.dataset.loadingLabel || "Berechne... bitte warten";
+    });
+})();
+</script>
 {% endblock %}

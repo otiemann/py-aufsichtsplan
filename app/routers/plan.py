@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict, Any
 
@@ -401,8 +402,11 @@ async def generate_post(
     period_start, period_end, weeks = get_planning_period(db)
     template_end = period_start + timedelta(days=4)
     bpd = 4
+    generation_duration_seconds = 0.0
     try:
+        start_ts = time.perf_counter()
         created_total = generate_repeating_period_assignments(db, period_start, weeks, bpd)
+        generation_duration_seconds = max(0.0, time.perf_counter() - start_ts)
     except OperationalError:
         response = RedirectResponse(url="/plan/generate", status_code=303)
         response.set_cookie(
@@ -479,6 +483,7 @@ async def generate_post(
             "period_start_label": period_start.strftime("%d.%m.%Y"),
             "period_end_label": period_end.strftime("%d.%m.%Y"),
             "period_weeks": weeks,
+            "generation_duration_label": f"{generation_duration_seconds:.1f}".replace(".", ","),
             "day_labels": weekday_labels(),
             "break_labels": break_labels(),
             "breaks_per_day": bpd,
