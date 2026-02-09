@@ -22,13 +22,22 @@ class AutoUpdater:
         self.github_repo = "otiemann/py-aufsichtsplan"  # Anpassen an Ihr Repo
         self.api_base = f"https://api.github.com/repos/{self.github_repo}"
         self.exe_name = "Aufsichtsplan.exe"
+        self.user_agent = f"Aufsichtsplan-Updater/{self.current_version} (+https://github.com/{self.github_repo})"
+        self.default_headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "application/vnd.github+json",
+        }
+
+    def _open_url(self, url: str, timeout: float = 10):
+        req = urllib.request.Request(url, headers=self.default_headers)
+        return urllib.request.urlopen(req, timeout=timeout)
         
     def check_for_updates(self) -> Optional[Dict]:
         """Prüft GitHub Releases API nach neuen Versionen"""
         try:
             # Prüfe alle Releases (auch Prereleases) da wir Beta-Versionen verwenden
             url = f"{self.api_base}/releases"
-            with urllib.request.urlopen(url, timeout=10) as response:
+            with self._open_url(url, timeout=10) as response:
                 releases_data = json.loads(response.read().decode())
             
             # Finde das neueste Release mit Assets
@@ -90,13 +99,36 @@ class AutoUpdater:
                 if progress_callback and totalsize > 0:
                     progress = min(100, (blocknum * blocksize * 100) // totalsize)
                     progress_callback(progress)
-                    
-            urllib.request.urlretrieve(download_url, temp_file, reporthook)
+
+            request_headers = {
+                "User-Agent": self.user_agent,
+                "Accept": "application/octet-stream,application/vnd.github+json,*/*",
+            }
+            req = urllib.request.Request(download_url, headers=request_headers)
+            with urllib.request.urlopen(req, timeout=60) as response, open(temp_file, "wb") as target:
+                total_size = int(response.headers.get("Content-Length", "0") or 0)
+                block_size = 64 * 1024
+                block_num = 0
+                while True:
+                    chunk = response.read(block_size)
+                    if not chunk:
+                        break
+                    target.write(chunk)
+                    block_num += 1
+                    reporthook(block_num, block_size, total_size)
+
+                if progress_callback:
+                    progress_callback(100)
             
             if os.path.exists(temp_file) and os.path.getsize(temp_file) > 0:
                 print(f"Download abgeschlossen: {temp_file}")
                 return temp_file
                 
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                print("Fehler beim Download: HTTP 403 (Forbidden). Bitte Netzwerk-/Proxy-Regeln oder GitHub-Rate-Limit prüfen.")
+            else:
+                print(f"Fehler beim Download (HTTP {e.code}): {e}")
         except Exception as e:
             print(f"Fehler beim Download: {e}")
             

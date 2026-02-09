@@ -8,6 +8,7 @@ import logging
 import logging.config
 import subprocess
 import urllib.request
+import urllib.error
 import faulthandler
 import multiprocessing as mp
 
@@ -79,6 +80,11 @@ def open_browser_when_ready(url: str, timeout_seconds: float = 15.0) -> None:
 				with urllib.request.urlopen(url, timeout=1.5) as resp:  # nosec B310
 					if 200 <= getattr(resp, "status", 200) < 500:
 						break
+			except urllib.error.HTTPError as exc:
+				# 4xx bedeutet: HTTP-Server läuft bereits und antwortet.
+				if 400 <= getattr(exc, "code", 0) < 500:
+					break
+				time.sleep(0.5)
 			except Exception:
 				time.sleep(0.5)
 		try_open_url(url)
@@ -197,6 +203,13 @@ def wait_until_ready(url: str, timeout_seconds: float = 15.0) -> None:
 			with urllib.request.urlopen(url, timeout=1.5) as resp:  # nosec B310
 				if 200 <= getattr(resp, "status", 200) < 500:
 					return
+		except urllib.error.HTTPError as exc:
+			# Für den Readiness-Check zählt jede HTTP-Antwort als "ready".
+			# 4xx kann app-spezifisch sein (Auth/Route), bedeutet aber: Server läuft.
+			if 400 <= getattr(exc, "code", 0) < 500:
+				return
+			last_exc = exc
+			time.sleep(0.5)
 		except Exception as exc:
 			last_exc = exc
 			time.sleep(0.5)
