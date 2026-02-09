@@ -199,6 +199,7 @@
 
 <script>
     let hasChanges = false;
+    let skipUnloadGuardUntil = 0;
     let draggedTeacher = null;
     let activeAddDialog = null;
 
@@ -208,6 +209,11 @@
     const BREAK_NAMES = ['0. Stunde', '2./3. Stunde', '4./5. Stunde', '6./7. Stunde'];
     const TEACHER_CHIP_STYLE = 'display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;';
     const REMOVE_BUTTON_STYLE = 'border: none; background: transparent; color: #c0392b; font-weight: bold; cursor: pointer; padding: 0; line-height: 1; font-size: 1rem;';
+
+    function allowExportNavigation() {
+        // Export-Downloads dürfen den beforeunload-Guard kurzzeitig umgehen.
+        skipUnloadGuardUntil = Date.now() + 4000;
+    }
 
     function getTeacherOption(value) {
         if (!value) {
@@ -1292,6 +1298,9 @@
 
     // Verhindere das Verlassen der Seite bei ungespeicherten Änderungen
     window.addEventListener('beforeunload', function(e) {
+        if (Date.now() < skipUnloadGuardUntil) {
+            return;
+        }
         if (hasChanges) {
             e.preventDefault();
             e.returnValue = '';
@@ -1344,6 +1353,11 @@
     });
 
     document.addEventListener('click', function(e) {
+        const exportLink = e.target.closest('a[data-export-link="1"]');
+        if (exportLink) {
+            allowExportNavigation();
+            return;
+        }
         if (!activeAddDialog) {
             return;
         }
