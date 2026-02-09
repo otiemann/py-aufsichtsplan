@@ -430,7 +430,7 @@ async def generate_post(
         response = RedirectResponse(url="/plan/generate", status_code=303)
         response.set_cookie(
             "flash",
-            "Planung fehlgeschlagen: Der Solver ist abgestürzt (OR-Tools). "
+            "Planung fehlgeschlagen: Der Solver ist abgestürzt oder hat das Zeitfenster überschritten (OR-Tools). "
             "Bitte Aufsichtsplan.exe neu herunterladen/aktualisieren oder Python 3.11/3.12 verwenden. "
             "Details siehe app.log.",
             max_age=20,

@@ -120,7 +120,11 @@ def _solve_in_subprocess(payload: dict, timeout_seconds: float) -> "SolverResult
     proc = ctx.Process(target=_solver_worker, args=(payload, result_queue), daemon=True)
     proc.start()
 
-    timeout = max(10.0, timeout_seconds + 20.0)
+    # Der CP-SAT-Solver läuft in mehreren aufeinanderfolgenden Optimierungsphasen
+    # (aktuell bis zu 5), jeweils mit demselben time_limit_s.
+    # Deshalb darf der Subprozess-Watchdog deutlich höher als "time_limit + 20s" sein,
+    # sonst wird auf langsameren Rechnern fälschlich ein Absturz gemeldet.
+    timeout = max(30.0, (max(1.0, timeout_seconds) * 6.0) + 30.0)
     try:
         status, data = result_queue.get(timeout=timeout)
     except (queue.Empty, EOFError):
