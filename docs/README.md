@@ -15,13 +15,13 @@ Professionelle Software für die Pausenaufsichtsplanung an Schulen.
 
 [**→ Neueste Version herunterladen**](./downloads/Aufsichtsplan.exe)
 
-Die Datei wird bei jedem Push auf `main` automatisch per GitHub Actions gebaut (PyInstaller) und hier über GitHub Pages bereitgestellt. Eine SHA256-Prüfsumme liegt in `./downloads/checksums.txt` auf derselben Seite.
+Die Datei wird bei jedem **veröffentlichten GitHub Release** automatisch per GitHub Actions gebaut (PyInstaller), als Release-Asset hochgeladen und hier über GitHub Pages bereitgestellt. Eine SHA256-Prüfsumme liegt in `./downloads/checksums.txt` auf derselben Seite.
 
 ## 📦 Installation
 
 1. Laden Sie die `Aufsichtsplan.exe` herunter
 2. Führen Sie die Datei aus
-3. Die Anwendung öffnet automatisch Ihren Browser
+3. Die Anwendung öffnet ein eigenes Desktop-Fenster (kein Browser erforderlich)
 4. Beginnen Sie mit dem Import Ihrer Daten
 
 ## ⚙️ Systemanforderungen
@@ -29,7 +29,7 @@ Die Datei wird bei jedem Push auf `main` automatisch per GitHub Actions gebaut (
 - Windows 10 oder neuer
 - 512 MB RAM
 - 50 MB freier Speicherplatz
-- Moderner Webbrowser
+- Microsoft Edge WebView2 Runtime (unter Windows 10/11 meist bereits vorhanden)
 
 ## 🔧 Verwendung
 
@@ -45,9 +45,9 @@ Die Datei wird bei jedem Push auf `main` automatisch per GitHub Actions gebaut (
 
 ### Aufsichtsplan erstellen
 1. Definieren Sie Aufsichtsbereiche und Kontingente
-2. Wählen Sie Woche und Einstellungen
-3. Generieren Sie den Plan automatisch
-4. Exportieren Sie als PDF oder CSV
+2. Wählen Sie den Zeitraum (Start-Montag + Anzahl Wochen)
+3. Generieren Sie den Wochenplan (wird im Zeitraum wöchentlich wiederholt)
+4. Exportieren Sie als PDF oder GPU009
 
 ## 🐛 Problem melden
 

@@ -1,26 +1,29 @@
-name: Deploy to GitHub Pages
+name: Release Build and Pages Deploy
 
 on:
-  push:
-    branches: [ main ]
+  release:
+    types:
+      - published
 
-# Permissions for Pages + artifact downloads
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: release-pages-${{ github.event.release.tag_name }}
+  cancel-in-progress: true
 
 jobs:
-  # Build Windows EXE first (shared artifact)
   build-windows:
+    name: Build Windows EXE
     runs-on: windows-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -33,58 +36,128 @@ jobs:
           pip install -r requirements.txt pyinstaller
 
       - name: Build executable via spec
-        run: pyinstaller Aufsichtsplan.spec
-        shell: cmd
+        shell: pwsh
+        run: |
+          if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          pyinstaller Aufsichtsplan.spec --distpath dist --workpath build
 
-      - name: Upload EXE artifact
+          if (-not (Test-Path "dist/Aufsichtsplan.exe")) {
+            Write-Error "dist/Aufsichtsplan.exe was not created"
+            exit 1
+          }
+
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $hash = Get-FileHash -Path "dist/Aufsichtsplan.exe" -Algorithm SHA256
+          "$($hash.Hash)  Aufsichtsplan.exe" | Out-File -FilePath "checksums.txt" -Encoding ASCII
+
+      - name: Create version metadata
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.release.tag_name }}" -replace "^v", ""
+          $publishedAt = "${{ github.event.release.published_at }}"
+          $repo = "${{ github.repository }}"
+          $tag = "${{ github.event.release.tag_name }}"
+
+          $versionInfo = @"
+          {
+            "version": "$version",
+            "build_date": "$publishedAt",
+            "commit": "${{ github.sha }}",
+            "download_url": "https://github.com/$repo/releases/download/$tag/Aufsichtsplan.exe"
+          }
+          "@
+
+          $versionInfo | Out-File -FilePath "version.json" -Encoding UTF8
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aufsichtsplan-windows
-          path: dist/Aufsichtsplan.exe
+          name: windows-release-assets
+          path: |
+            dist/Aufsichtsplan.exe
+            checksums.txt
+            version.json
 
-  # Build site and embed EXE download
-  build-site:
+  update-release:
+    name: Update GitHub Release Assets
     runs-on: ubuntu-latest
     needs: build-windows
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release-assets
+          path: ./release-assets
+
+      - name: Normalize artifact paths
+        run: |
+          mkdir -p ./normalized
+          cp "$(find ./release-assets -type f -name 'Aufsichtsplan.exe' | head -n1)" ./normalized/Aufsichtsplan.exe
+          cp "$(find ./release-assets -type f -name 'checksums.txt' | head -n1)" ./normalized/checksums.txt
+          cp "$(find ./release-assets -type f -name 'version.json' | head -n1)" ./normalized/version.json
+
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            normalized/Aufsichtsplan.exe
+            normalized/checksums.txt
+            normalized/version.json
+          overwrite_files: true
+          fail_on_unmatched_files: true
+
+  deploy-pages:
+    name: Deploy GitHub Pages
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows
+      - update-release
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
         with:
-          enablement: true
+          ref: ${{ github.event.release.tag_name }}
 
-      - name: Download EXE artifact
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: aufsichtsplan-windows
-          path: ./artifact
+          name: windows-release-assets
+          path: ./release-assets
 
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./docs
-          destination: ./_site
-
-      - name: Add EXE + checksum to site
+      - name: Normalize artifact paths
         run: |
+          mkdir -p ./normalized
+          cp "$(find ./release-assets -type f -name 'Aufsichtsplan.exe' | head -n1)" ./normalized/Aufsichtsplan.exe
+          cp "$(find ./release-assets -type f -name 'checksums.txt' | head -n1)" ./normalized/checksums.txt
+          cp "$(find ./release-assets -type f -name 'version.json' | head -n1)" ./normalized/version.json
+
+      - name: Build static site
+        run: |
+          rm -rf _site
           mkdir -p _site/downloads
-          cp artifact/Aufsichtsplan.exe _site/downloads/
-          (cd _site/downloads && sha256sum Aufsichtsplan.exe > checksums.txt)
+          cp -R docs/. _site/
+          cp normalized/Aufsichtsplan.exe _site/downloads/
+          cp normalized/checksums.txt _site/downloads/
+          cp normalized/version.json _site/downloads/
+          cp normalized/version.json _site/version.json
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build-site
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

@@ -1,157 +1,145 @@
-{% extends "base.html" %} {% block content %}
+{% extends "base.html" %}
+
+{% block content %}
 <style>
-    .home-container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 2rem;
+    .home-hero {
         text-align: center;
+        margin: 0.6rem 0 1.6rem;
     }
-    
-    .home-title {
-        font-size: 2.5rem;
-        color: #2c3e50;
-        margin-bottom: 1rem;
+
+    .home-hero h2 {
+        margin-bottom: 0.45rem;
     }
-    
-    .home-subtitle {
-        font-size: 1.2rem;
-        color: #7f8c8d;
-        margin-bottom: 3rem;
+
+    .home-hero p {
+        max-width: 760px;
+        margin: 0 auto;
     }
-    
-    .home-buttons {
+
+    .home-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 3rem;
-    }
-    
-    .home-button {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 2rem;
-        background: #e74c3c;
-        color: white;
-        text-decoration: none;
-        border-radius: 10px;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    
-    .home-button:hover {
-        background: #c0392b;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-    }
-    
-    .home-button-icon {
-        font-size: 3rem;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
         margin-bottom: 1rem;
     }
-    
-    .home-button-title {
-        font-size: 1.5rem;
-        font-weight: bold;
+
+    .home-card {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 1rem;
+        background: #fff;
+        box-shadow: var(--shadow);
+        transition: 0.2s ease;
+    }
+
+    .home-card:hover {
+        transform: translateY(-2px);
+    }
+
+    .home-card.plan {
+        background: linear-gradient(155deg, #f0fdf4 0%, #dcfce7 100%);
+        border-color: #86efac;
+    }
+
+    .home-card.teachers {
+        background: linear-gradient(155deg, #fef2f2 0%, #fee2e2 100%);
+        border-color: #fecaca;
+    }
+
+    .home-card.floors {
+        background: linear-gradient(155deg, #fffbeb 0%, #fef3c7 100%);
+        border-color: #fcd34d;
+    }
+
+    .home-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 1.4rem;
+        margin-bottom: 0.6rem;
+    }
+
+    .home-card.plan .home-icon {
+        background: #16a34a;
+    }
+
+    .home-card.teachers .home-icon {
+        background: #dc2626;
+    }
+
+    .home-card.floors .home-icon {
+        background: #d97706;
+    }
+
+    .home-card h3 {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+
+    .home-card p {
+        margin: 0.45rem 0 0.8rem;
+        color: #334155;
+    }
+
+    .home-open {
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+
+    .quickstart li {
         margin-bottom: 0.5rem;
     }
-    
-    .home-button-desc {
-        font-size: 0.9rem;
-        opacity: 0.9;
-    }
-    
-    .home-button.floors {
-        background: #f39c12;
-    }
-    
-    .home-button.floors:hover {
-        background: #e67e22;
-    }
-    
-    .home-button.plan {
-        background: #27ae60;
-    }
-    
-    .home-button.plan:hover {
-        background: #229954;
-    }
-    
-    .home-button.start {
-        background: #3498db;
-    }
-    
-    .home-button.start:hover {
-        background: #2980b9;
-    }
-    
-    .home-info {
-        background: #ecf0f1;
-        padding: 1.5rem;
-        border-radius: 10px;
-        text-align: left;
-    }
-    
-    .home-info h3 {
-        color: #2c3e50;
-        margin-bottom: 1rem;
-    }
-    
-    .home-info ul {
-        list-style: none;
-        padding: 0;
-    }
-    
-    .home-info li {
-        padding: 0.5rem 0;
-        padding-left: 1.5rem;
-        position: relative;
-    }
-    
-    .home-info li:before {
-        content: "✓";
-        position: absolute;
-        left: 0;
-        color: #27ae60;
-        font-weight: bold;
+
+    @media (max-width: 960px) {
+        .home-grid {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 
-<div class="home-container">
-    <h1 class="home-title">Pausenaufsicht Verwaltung</h1>
-    <p class="home-subtitle">Einfache Planung und Verwaltung der Pausenaufsichten</p>
+<div class="home-hero">
+    <h2>Pausenaufsicht Verwaltung</h2>
+    <p>Einfache Planung und Verwaltung der Pausenaufsichten mit klaren Workflows für Lehrkräfte, Stockwerke und Wochenpläne.</p>
+</div>
 
-    <div class="home-buttons">
-        <a href="/plan/generate" class="home-button plan">
-            <div class="home-button-icon">📅</div>
-            <div class="home-button-title">Plan erstellen</div>
-            <div class="home-button-desc">Pausenaufsichtsplan generieren und anzeigen</div>
-        </a>
+<div class="home-grid">
+    <a href="/plan/generate" class="home-card plan">
+        <div class="home-icon">📅</div>
+        <h3>Plan erstellen</h3>
+        <p>Pausenaufsichtsplan generieren, prüfen und exportieren.</p>
+        <span class="home-open">Öffnen</span>
+    </a>
 
-        <a href="/admin/teachers" class="home-button">
-            <div class="home-button-icon">👥</div>
-            <div class="home-button-title">Lehrkräfte</div>
-            <div class="home-button-desc">Lehrkräfte verwalten und importieren</div>
-        </a>
+    <a href="/admin/teachers" class="home-card teachers">
+        <div class="home-icon">👥</div>
+        <h3>Lehrkräfte</h3>
+        <p>Lehrkräfte, Soll-Aufsichten und Unterrichtszeiten verwalten.</p>
+        <span class="home-open">Öffnen</span>
+    </a>
 
-        <a href="/plan/floors" class="home-button floors">
-            <div class="home-button-icon">🏢</div>
-            <div class="home-button-title">Stockwerke</div>
-            <div class="home-button-desc">Stockwerke und Bedarf konfigurieren</div>
-        </a>
-    </div>
+    <a href="/plan/floors" class="home-card floors">
+        <div class="home-icon">🏢</div>
+        <h3>Stockwerke</h3>
+        <p>Bereiche und Bedarf pro Pause zentral konfigurieren.</p>
+        <span class="home-open">Öffnen</span>
+    </a>
+</div>
 
-    <div class="home-info">
-        <h3>Schnellstart:</h3>
-        <ul>
-            <li>Zuerst Lehrkräfte über CSV-Datei importieren (Admin → CSV hochladen)</li>
-            <li>Stockwerke anlegen und Bedarf festlegen</li>
-            <li>Pausenaufsichtsplan generieren</li>
-            <li>Plan als PDF exportieren oder ausdrucken</li>
-        </ul>
-        <p style="margin-top: 1rem; font-size: 0.9rem; color: #7f8c8d;">
-            <strong>Tipp:</strong> Verwenden Sie den <strong>⚙️ Admin</strong> Button im Menü für erweiterte Funktionen wie CSV-Import, Datenbank-Backup und Update-Prüfung.
-        </p>
-    </div>
+<div class="page-card">
+    <h3>Schnellstart</h3>
+    <ul class="quickstart">
+        <li>Zuerst Lehrkräfte über CSV-Datei importieren (Admin → CSV hochladen).</li>
+        <li>Stockwerke anlegen und Bedarf pro Pause festlegen.</li>
+        <li>Pausenaufsichtsplan für den Zeitraum generieren.</li>
+        <li>Plan als PDF oder GPU009 exportieren.</li>
+    </ul>
+    <p><strong>Tipp:</strong> Im Bereich <a href="/admin">Admin</a> finden Sie Import, Backup, Update-Check und Datenbankpfad-Verwaltung.</p>
 </div>
 {% endblock %}

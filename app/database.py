@@ -1,36 +1,50 @@
 import os
 import sys
+import shutil
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from .db_config import get_app_data_dir, read_database_path_config
 
 # Bestimme den Datenpfad
 _db_path = os.environ.get("DATABASE_PATH")
+if _db_path:
+	_db_path = os.path.abspath(os.path.expanduser(os.path.expandvars(_db_path)))
 if not _db_path:
-	data_dir = os.environ.get("APP_DATA_DIR")
-	if not data_dir:
-		if getattr(sys, "frozen", False):
-			data_dir = os.path.dirname(os.path.abspath(sys.executable))
-		else:
-			data_dir = os.path.dirname(os.path.abspath(__file__))
-	os.makedirs(data_dir, exist_ok=True)
+	_db_path = read_database_path_config()
+if not _db_path:
+	data_dir = get_app_data_dir()
 
 	target_filename = "aufsichtsplan.db"
 	candidate_path = os.path.join(data_dir, target_filename)
 
 	if not os.path.exists(candidate_path):
-		legacy_names = [
-			os.path.join(data_dir, "vertretungsplan.db"),
-		]
-		for legacy_path in legacy_names:
+		legacy_paths = [os.path.join(data_dir, "vertretungsplan.db")]
+		# Migration: ältere Versionen haben die DB ggf. direkt neben der EXE abgelegt.
+		# Auf gemanagten Rechnern ist das Verzeichnis oft nicht beschreibbar – daher versuchen wir zu kopieren.
+		if getattr(sys, "frozen", False):
+			exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+			if os.path.abspath(exe_dir) != os.path.abspath(data_dir):
+				legacy_paths.extend(
+					[
+						os.path.join(exe_dir, target_filename),
+						os.path.join(exe_dir, "vertretungsplan.db"),
+					]
+				)
+
+		for legacy_path in legacy_paths:
 			if os.path.exists(legacy_path):
 				try:
-					os.replace(legacy_path, candidate_path)
+					shutil.copy2(legacy_path, candidate_path)
 				except OSError:
 					candidate_path = legacy_path
 				break
 
 	_db_path = candidate_path
+
+db_dir = os.path.dirname(os.path.abspath(_db_path))
+if db_dir:
+	os.makedirs(db_dir, exist_ok=True)
 
 # SQLite-URL mit absolutem Pfad
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{os.path.abspath(_db_path)}"

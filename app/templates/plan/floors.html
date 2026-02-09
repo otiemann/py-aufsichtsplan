@@ -1,61 +1,71 @@
-{% extends "base.html" %} {% block content %}
-<h2>Stockwerke</h2>
+{% extends "base.html" %}
 
-<form method="post" action="/plan/floors" style="margin-bottom:1rem;">
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end; max-width: 800px;">
+{% block content %}
+<div class="section-head">
+    <div>
+        <h2>Stockwerke</h2>
+        <p>Verwalten Sie die Bereiche und den Bedarf pro Pause.</p>
+    </div>
+</div>
+
+<div class="page-card info">
+    <h3>Neues Stockwerk hinzufügen</h3>
+    <form method="post" action="/plan/floors" style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 0.75rem; align-items: end;">
         <div>
-            <label for="name" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Stockwerk Name:</label>
-            <input type="text" id="name" name="name" placeholder="z.B. EG u. Hof" required>
+            <label for="name"><strong>Name</strong></label>
+            <input type="text" id="name" name="name" placeholder="z. B. EG u. Hof" required>
         </div>
         <div>
-            <label for="required_per_break" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Bedarf pro Pause:</label>
+            <label for="required_per_break"><strong>Bedarf pro Pause</strong></label>
             <input type="number" id="required_per_break" name="required_per_break" min="1" value="1">
         </div>
         <div>
-            <label for="order_index" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Reihenfolge:</label>
+            <label for="order_index"><strong>Reihenfolge</strong></label>
             <input type="number" id="order_index" name="order_index" min="0" value="0">
         </div>
-        <div>
-            <button type="submit" style="padding: 0.5rem 1rem; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Hinzufügen</button>
-        </div>
-    </div>
-</form>
+        <button type="submit" class="btn btn-primary">Hinzufügen</button>
+    </form>
+</div>
 
-<table>
-    <thead>
-        <tr>
-            <th>Reihenfolge</th>
-            <th>Name</th>
-            <th>Bedarf pro Pause</th>
-            <th>Aktionen</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for f in floors %}
-        <tr>
-            <td>
-                <form method="post" action="/plan/floors/order" style="display:inline;">
-                    <input type="hidden" name="floor_id" value="{{ f.id }}">
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <input type="number" name="order_index" value="{{ f.order_index }}" style="width:5rem;" title="Reihenfolge ändern">
-                        <button type="submit" style="padding: 0.25rem 0.5rem; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">💾</button>
-                    </div>
-                </form>
-            </td>
-            <td>{{ f.name }}</td>
-            <td>{{ f.required_per_break }}</td>
-            <td>
-                <form method="post" action="/plan/floors/delete" style="display:inline;" onsubmit="return confirm('Stockwerk {{ f.name }} wirklich löschen?');">
-                    <input type="hidden" name="floor_id" value="{{ f.id }}">
-                    <button type="submit" style="padding: 0.25rem 0.5rem; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Stockwerk löschen">🗑️</button>
-                </form>
-            </td>
-        </tr>
-        {% else %}
-        <tr>
-            <td colspan="4">Noch keine Stockwerke vorhanden.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="page-card">
+    <table>
+        <thead>
+            <tr>
+                <th>Reihenfolge</th>
+                <th>Name</th>
+                <th>Bedarf pro Pause</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in floors %}
+            <tr>
+                <td>
+                    <form method="post" action="/plan/floors/order" style="display: flex; gap: 0.45rem; align-items: center;">
+                        <input type="hidden" name="floor_id" value="{{ f.id }}">
+                        <input type="number" name="order_index" value="{{ f.order_index }}" style="max-width: 6rem;" title="Reihenfolge ändern">
+                        <button type="submit" class="btn btn-success">Speichern</button>
+                    </form>
+                </td>
+                <td>{{ f.name }}</td>
+                <td>{{ f.required_per_break }}</td>
+                <td>
+                    <form method="post" action="/plan/floors/delete" onsubmit="return confirm('Stockwerk {{ f.name }} wirklich löschen?');">
+                        <input type="hidden" name="floor_id" value="{{ f.id }}">
+                        <button type="submit" class="btn btn-danger" title="Stockwerk löschen">Löschen</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4">Noch keine Stockwerke vorhanden.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="page-card warn">
+    <p><strong>Hinweis:</strong> Die Reihenfolge bestimmt die Anzeige im Plan. Der Bedarf pro Pause steuert die Mindestanzahl benötigter Lehrkräfte je Bereich.</p>
+</div>
 {% endblock %}

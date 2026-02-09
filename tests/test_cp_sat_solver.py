@@ -160,7 +160,7 @@ def test_floor_preference_is_respected() -> None:
 
 def test_daily_penalty_counts_excess_assignments() -> None:
     teachers = [
-        _make_teacher(1, target=2, periods_by_day={0: {2}}),
+        _make_teacher(1, target=2, periods_by_day={0: {2, 4}}),
         _make_teacher(2, target=0, periods_by_day={}),
     ]
     slots = [
@@ -200,8 +200,8 @@ def test_daily_penalty_counts_excess_assignments() -> None:
 
 def test_respects_max_extra_duties_cap() -> None:
     teachers = [
-        _make_teacher(1, target=1, periods_by_day={0: {2}}, preferred_floor=1),
-        _make_teacher(2, target=1, periods_by_day={0: {2}}),
+        _make_teacher(1, target=1, periods_by_day={0: {2}, 1: {2}}, preferred_floor=1),
+        _make_teacher(2, target=1, periods_by_day={0: {2}, 1: {2}}),
     ]
     slots = [
         _make_slot(
@@ -265,3 +265,37 @@ def test_shortfall_detected_when_coverage_impossible() -> None:
     assert result.status in {"OPTIMAL", "FEASIBLE"}
     assert result.total_shortfall == 2
     assert result.shortfalls == {("slot-1", 1): 2}
+
+
+def test_positive_target_teacher_gets_at_least_one_when_feasible() -> None:
+    periods_all_days = {day: {2} for day in range(0, 6)}
+    teachers = [
+        _make_teacher(1, target=5, periods_by_day=periods_all_days),
+        _make_teacher(2, target=5, periods_by_day=periods_all_days),
+        _make_teacher(3, target=1, periods_by_day=periods_all_days),
+    ]
+    slots = [
+        _make_slot(
+            f"slot-{i}",
+            dt=date(2024, 9, 2 + i),
+            break_index=2,
+            before_period=2,
+            after_period=3,
+            needs={1: 1},
+        )
+        for i in range(6)
+    ]
+
+    solver = BreakSupervisionSolver(
+        teachers=teachers,
+        break_slots=slots,
+        floor_ids=[1],
+        fairness_band=None,
+        max_one_per_day=False,
+        time_limit_s=5.0,
+    )
+    result = solver.solve()
+
+    assert result.status in {"OPTIMAL", "FEASIBLE"}
+    assert result.total_shortfall == 0
+    assert result.loads[3] >= 1

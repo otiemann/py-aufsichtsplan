@@ -1,12 +1,94 @@
+<style>
+    #planContainer {
+        overflow-x: auto;
+    }
+
+    #planContainer > table {
+        min-width: 980px;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    #planContainer > table thead tr {
+        background: #f8fafc !important;
+    }
+
+    #planContainer .drop-zone {
+        min-height: 74px !important;
+        background: #fff;
+    }
+
+    .unsaved-banner {
+        position: sticky;
+        top: 76px;
+        z-index: 10;
+        background: #fffbeb;
+        border: 1px solid #fcd34d;
+        color: #92400e;
+        padding: 0.6rem 0.9rem;
+        border-radius: 10px;
+        margin-bottom: 0.8rem;
+        display: none;
+    }
+
+    .plan-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin: 0.5rem 0 0.8rem 0;
+        font-size: 0.9rem;
+        color: #555;
+    }
+
+    .legend-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+    }
+
+    .floor-container[data-empty="true"] {
+        border-left-color: #e74c3c;
+        background: #fdecea;
+    }
+
+    .floor-container[data-empty="true"] .teachers-empty-indicator {
+        color: #c0392b;
+        font-style: normal;
+        font-weight: bold;
+    }
+
+    #editControls {
+        border: 1px solid #86efac !important;
+        border-left: 4px solid #16a34a !important;
+        border-radius: 12px !important;
+    }
+</style>
+
 <div id="planContainer">
     {% if teacher_options_json %}
     <script>
         window.teacherOptions = {{ teacher_options_json | safe }};
+        window.planPeriodWeeks = {{ period_weeks | default(1) }};
     </script>
     {% else %}
     <script>
         window.teacherOptions = window.teacherOptions || [];
+        window.planPeriodWeeks = {{ period_weeks | default(1) }};
     </script>
+    {% endif %}
+    {% if grid and day_labels and breaks_per_day %}
+    <div id="unsavedBanner" class="unsaved-banner">⚠️ Änderungen nicht gespeichert</div>
+    <div class="plan-legend">
+        <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e3f2fd;border:1px solid #2196f3;"></span> Reguläre Einteilung</span>
+        <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fdecea;border:1px solid #e74c3c;"></span> Warnung</span>
+        <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fdecea;border:1px solid #e74c3c;"></span> Unbesetzt</span>
+        <span class="legend-chip">⚠️ Hinweis: Einteilung prüfen</span>
+    </div>
     {% endif %}
     <table style="width: 100%; border-collapse: collapse;">
         <thead>
@@ -18,7 +100,8 @@
             </tr>
         </thead>
         <tbody>
-            {% if grid and day_labels and breaks_per_day %} {% for d_idx in range(0, 5) %}
+    {% if grid and day_labels and breaks_per_day %}
+    {% for d_idx in range(0, 5) %}
             <tr>
                 <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold; background: #f9f9f9;">
                     {{ day_labels[d_idx] }}
@@ -27,10 +110,11 @@
                 <td class="drop-zone" data-day="{{ d_idx }}" data-break="{{ b }}" style="border: 1px solid #ddd; padding: 8px; vertical-align: top; min-height: 60px; position: relative;" ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="clearDropHighlight(event)"
                     ondragenter="handleDragEnter(event)">
                     {% for line in grid[d_idx][b] %} {% set outer_loop = loop %} {% for floor_line in [line] %} {% if ':' in floor_line %} {% set floor_name, teachers_str = floor_line.split(':', 1) %}
-                    <div class="floor-container" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
+                    {% set has_teachers = teachers_str.strip() != '—' and teachers_str.strip() != '' %}
+                    <div class="floor-container" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-empty="{{ 'true' if not has_teachers else 'false' }}" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
                         <strong>{{ floor_name.strip() }}:</strong>
                         <div class="teachers-container" style="margin-top: 2px;">
-                            {% if teachers_str.strip() != '—' and teachers_str.strip() != '' %}
+                            {% if has_teachers %}
                                 {% for teacher in teachers_str.split(',') %}
                                     {% set teacher_raw = teacher.strip() %}
                                     {% if teacher_raw %}
@@ -119,6 +203,9 @@
     let activeAddDialog = null;
 
     const teacherOptions = Array.isArray(window.teacherOptions) ? window.teacherOptions : [];
+    const planPeriodWeeks = Math.max(1, Number(window.planPeriodWeeks || 1));
+    const WEEKDAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
+    const BREAK_NAMES = ['0. Stunde', '2./3. Stunde', '4./5. Stunde', '6./7. Stunde'];
     const TEACHER_CHIP_STYLE = 'display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 6px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;';
     const REMOVE_BUTTON_STYLE = 'border: none; background: transparent; color: #c0392b; font-weight: bold; cursor: pointer; padding: 0; line-height: 1; font-size: 1rem;';
 
@@ -147,6 +234,198 @@
         return value || '';
     }
 
+    function normalizeDayIndex(dayValue) {
+        const parsedDay = Number(dayValue);
+        if (!Number.isInteger(parsedDay) || parsedDay < 0 || parsedDay > 4) {
+            return null;
+        }
+        return parsedDay;
+    }
+
+    function normalizeBreakIndexFromGrid(breakValue) {
+        const parsedBreak = Number(breakValue);
+        if (!Number.isInteger(parsedBreak)) {
+            return null;
+        }
+        // Grid-Daten sind 0-basiert: 0..3 -> 1..4
+        if (parsedBreak < 0 || parsedBreak > 3) {
+            return null;
+        }
+        return parsedBreak + 1;
+    }
+
+    function getAvailabilityViolationMessage(teacherValue, dayValue, breakValue) {
+        const option = getTeacherOption(teacherValue);
+        if (!option) {
+            return `Verfügbarkeit für "${teacherValue}" konnte nicht geprüft werden.`;
+        }
+
+        const dayIndex = normalizeDayIndex(dayValue);
+        const breakIndex = normalizeBreakIndexFromGrid(breakValue);
+        if (dayIndex === null || breakIndex === null) {
+            return 'Ungültiger Ziel-Slot.';
+        }
+
+        const availability = option.availability || {};
+        const availabilityKey = `${dayIndex}-${breakIndex}`;
+        if (availability[availabilityKey]) {
+            return '';
+        }
+
+        const dayLabel = WEEKDAY_NAMES[dayIndex] || `Tag ${dayIndex + 1}`;
+        const breakLabel = BREAK_NAMES[breakIndex - 1] || `Pause ${breakIndex}`;
+        return `${getTeacherDisplayName(teacherValue)} ist am ${dayLabel} (${breakLabel}) nicht verfügbar (kein Unterricht vor/nach der Pause).`;
+    }
+
+    function getSlotLabels(dayValue, breakValue) {
+        const dayIndex = normalizeDayIndex(dayValue);
+        const breakIndex = normalizeBreakIndexFromGrid(breakValue);
+        const dayLabel = dayIndex === null ? 'Unbekannter Tag' : (WEEKDAY_NAMES[dayIndex] || `Tag ${dayIndex + 1}`);
+        const breakLabel = breakIndex === null ? 'Unbekannte Pause' : (BREAK_NAMES[breakIndex - 1] || `Pause ${breakIndex}`);
+        return { dayIndex, breakIndex, dayLabel, breakLabel };
+    }
+
+    function collectCurrentTeacherCounts() {
+        const counts = new Map();
+        let totalAssignments = 0;
+        document.querySelectorAll('.teacher-chip').forEach(chip => {
+            const teacherValue = (chip.dataset.teacher || '').trim();
+            if (!teacherValue) {
+                return;
+            }
+            totalAssignments += 1;
+            counts.set(teacherValue, (counts.get(teacherValue) || 0) + 1);
+        });
+        return { counts, totalAssignments };
+    }
+
+    function getTeacherCountFilterMode() {
+        const filterSelect = document.getElementById('teacherCountFilter');
+        return filterSelect ? (filterSelect.value || 'all') : 'all';
+    }
+
+    function getTeacherCountFromRow(row) {
+        const countValueElement = row.querySelector('.teacher-count-value');
+        const parsed = Number((countValueElement?.textContent || '').trim());
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function shouldShowTeacherCountRow(row, filterMode) {
+        if (filterMode === 'all') {
+            return true;
+        }
+
+        const target = Number(row.dataset.target || 0);
+        const count = getTeacherCountFromRow(row);
+
+        // "Soll erfüllt"/"unter Soll" ist nur für Lehrkräfte mit gesetztem Soll sinnvoll.
+        if (!(target > 0)) {
+            return false;
+        }
+
+        if (filterMode === 'reached') {
+            return count >= target;
+        }
+        if (filterMode === 'under') {
+            return count < target;
+        }
+        return true;
+    }
+
+    function applyTeacherCountFilter() {
+        const rows = Array.from(document.querySelectorAll('.teacher-count-row'));
+        if (!rows.length) {
+            return;
+        }
+
+        const filterMode = getTeacherCountFilterMode();
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const visible = shouldShowTeacherCountRow(row, filterMode);
+            row.style.display = visible ? '' : 'none';
+            if (visible) {
+                visibleCount += 1;
+            }
+        });
+
+        const summary = document.getElementById('teacherCountFilterSummary');
+        if (summary) {
+            summary.textContent = `${visibleCount} von ${rows.length} sichtbar`;
+        }
+    }
+
+    function getTeacherTarget(teacherValue) {
+        const row = document.querySelector(`.teacher-count-row[data-teacher-key="${teacherValue}"]`);
+        if (!row) {
+            return 0;
+        }
+        const target = Number(row.dataset.target || 0);
+        if (!Number.isFinite(target) || target <= 0) {
+            return 0;
+        }
+        return target;
+    }
+
+    function findTeacherInSameSlot(teacherValue, dayValue, breakValue, excludeChip = null) {
+        const dayKey = String(dayValue);
+        const breakKey = String(breakValue);
+        return Array.from(document.querySelectorAll('.teacher-chip')).find(chip => {
+            if (excludeChip && chip === excludeChip) {
+                return false;
+            }
+            return (
+                chip.dataset.teacher === teacherValue &&
+                chip.dataset.day === dayKey &&
+                chip.dataset.break === breakKey
+            );
+        }) || null;
+    }
+
+    function updateTeacherCountsTable() {
+        const countRows = document.querySelectorAll('.teacher-count-row');
+        if (!countRows.length) {
+            return;
+        }
+
+        const { counts, totalAssignments } = collectCurrentTeacherCounts();
+
+        countRows.forEach(row => {
+            const teacherKey = row.dataset.teacherKey || '';
+            const target = Number(row.dataset.target || 0);
+            const count = counts.get(teacherKey) || 0;
+            const reachedMax = target > 0 && count >= target;
+
+            const countValueElement = row.querySelector('.teacher-count-value');
+            if (countValueElement) {
+                countValueElement.textContent = String(count);
+                if (reachedMax) {
+                    countValueElement.style.background = '#ffe0a3';
+                    countValueElement.style.padding = '0.1rem 0.4rem';
+                    countValueElement.style.borderRadius = '0.4rem';
+                } else {
+                    countValueElement.style.background = '';
+                    countValueElement.style.padding = '';
+                    countValueElement.style.borderRadius = '';
+                }
+            }
+
+            row.style.background = reachedMax ? '#fff3cd' : '';
+        });
+
+        const weeklyTotalElement = document.getElementById('weeklyTotalAssignments');
+        if (weeklyTotalElement) {
+            weeklyTotalElement.textContent = String(totalAssignments);
+        }
+
+        const periodTotalElement = document.getElementById('periodTotalAssignments');
+        if (periodTotalElement) {
+            periodTotalElement.textContent = String(totalAssignments * planPeriodWeeks);
+        }
+
+        applyTeacherCountFilter();
+    }
+
     function removePlaceholder(container) {
         if (!container) {
             return;
@@ -154,6 +433,9 @@
         const placeholder = container.querySelector('.teachers-empty-indicator');
         if (placeholder) {
             placeholder.remove();
+        }
+        if (container.closest && container.closest('.floor-container')) {
+            container.closest('.floor-container').dataset.empty = 'false';
         }
     }
 
@@ -166,6 +448,9 @@
             if (existing) {
                 existing.remove();
             }
+            if (container.closest && container.closest('.floor-container')) {
+                container.closest('.floor-container').dataset.empty = 'false';
+            }
             return;
         }
         if (!container.querySelector('.teachers-empty-indicator')) {
@@ -175,6 +460,9 @@
             placeholder.style.fontStyle = 'italic';
             placeholder.textContent = '—';
             container.appendChild(placeholder);
+        }
+        if (container.closest && container.closest('.floor-container')) {
+            container.closest('.floor-container').dataset.empty = 'true';
         }
     }
 
@@ -221,29 +509,93 @@
         }, 500);
     }
 
-    function ensureTeacherOptionsDatalist() {
-        const datalistId = 'teacherOptionsList';
-        let datalist = document.getElementById(datalistId);
-        if (!datalist) {
-            datalist = document.createElement('datalist');
-            datalist.id = datalistId;
-            document.body.appendChild(datalist);
+    function setHasChanges(value) {
+        hasChanges = value;
+        const banner = document.getElementById('unsavedBanner');
+        if (banner) {
+            banner.style.display = hasChanges ? 'block' : 'none';
+        }
+        if (typeof updateSaveButton === 'function') {
+            updateSaveButton();
+        }
+    }
+
+    function filterTeacherOptions(query, optionsSource = teacherOptions) {
+        const normalizedQuery = (query || '').trim().toLowerCase();
+        if (!normalizedQuery) {
+            return optionsSource.slice();
+        }
+        return optionsSource.filter(opt => {
+            if (!opt) {
+                return false;
+            }
+            const optionValue = (opt.value || '').toLowerCase();
+            const optionDisplay = (opt.display || '').toLowerCase();
+            const optionAbbreviation = (opt.abbreviation || '').toLowerCase();
+            return (
+                optionValue.includes(normalizedQuery) ||
+                optionDisplay.includes(normalizedQuery) ||
+                optionAbbreviation.includes(normalizedQuery)
+            );
+        });
+    }
+
+    function getEligibleTeacherOptionsForSlot(dayValue, breakValue, floorContainer) {
+        const dayIndex = normalizeDayIndex(dayValue);
+        const breakIndex = normalizeBreakIndexFromGrid(breakValue);
+        if (dayIndex === null || breakIndex === null) {
+            return [];
         }
 
-        if (!datalist.dataset.populated) {
-            datalist.innerHTML = '';
-            teacherOptions.forEach(opt => {
-                if (!opt) return;
-                const option = document.createElement('option');
-                option.value = opt.value;
-                if (opt.display && opt.display !== opt.value) {
-                    option.label = opt.display;
+        const availabilityKey = `${dayIndex}-${breakIndex}`;
+        const { counts } = collectCurrentTeacherCounts();
+
+        const assignedInFloor = new Set();
+        const teachersContainer = floorContainer?.querySelector('.teachers-container');
+        if (teachersContainer) {
+            teachersContainer.querySelectorAll('.teacher-chip').forEach(chip => {
+                const value = (chip.dataset.teacher || '').trim();
+                if (value) {
+                    assignedInFloor.add(value);
                 }
-                datalist.appendChild(option);
             });
-            datalist.dataset.populated = 'true';
         }
-        return datalist;
+
+        return teacherOptions.filter(opt => {
+            if (!opt || !opt.value) {
+                return false;
+            }
+            const teacherValue = opt.value;
+
+            if (opt.exempt) {
+                return false;
+            }
+
+            if (assignedInFloor.has(teacherValue)) {
+                return false;
+            }
+
+            if (findTeacherInSameSlot(teacherValue, dayValue, breakValue)) {
+                return false;
+            }
+
+            const availability = opt.availability || {};
+            if (!availability[availabilityKey]) {
+                return false;
+            }
+
+            const target = getTeacherTarget(teacherValue);
+            if (target <= 0) {
+                return false;
+            }
+
+            const currentCount = counts.get(teacherValue) || 0;
+            if (currentCount >= target) {
+                return false;
+            }
+
+            return true;
+        });
     }
 
     function closeAddTeacherDialog() {
@@ -286,14 +638,43 @@
             return false;
         }
 
+        const sameSlotAssignment = findTeacherInSameSlot(teacherValue, day, breakIndex);
+        if (sameSlotAssignment) {
+            const existingFloor = sameSlotAssignment.dataset.floor || 'unbekannt';
+            const { dayLabel, breakLabel } = getSlotLabels(day, breakIndex);
+            showErrorMessage(
+                `${getTeacherDisplayName(teacherValue)} ist am ${dayLabel} (${breakLabel}) bereits im Stockwerk ${existingFloor} eingeplant.`
+            );
+            return false;
+        }
+
+        const availabilityViolation = getAvailabilityViolationMessage(teacherValue, day, breakIndex);
+        if (availabilityViolation) {
+            showErrorMessage(availabilityViolation);
+            return false;
+        }
+
+        const teacherTarget = getTeacherTarget(teacherValue);
+        if (teacherTarget > 0) {
+            const { counts } = collectCurrentTeacherCounts();
+            const currentCount = counts.get(teacherValue) || 0;
+            if ((currentCount + 1) > teacherTarget) {
+                const { dayLabel, breakLabel } = getSlotLabels(day, breakIndex);
+                showErrorMessage(
+                    `${getTeacherDisplayName(teacherValue)} würde am ${dayLabel} (${breakLabel}) das Soll überschreiten (${currentCount + 1}/${teacherTarget}).`
+                );
+                return false;
+            }
+        }
+
         removePlaceholder(teachersContainer);
 
         const chip = createTeacherChip({ value: teacherValue, label: option.value }, floorContainer.dataset.floor, day, breakIndex);
         teachersContainer.appendChild(chip);
         animateChip(chip);
 
-        hasChanges = true;
-        updateSaveButton();
+        updateTeacherCountsTable();
+        setHasChanges(true);
         showSuccessMessage(`${getTeacherDisplayName(teacherValue)} → ${floorContainer.dataset.floor}`);
         return true;
     }
@@ -319,24 +700,129 @@
 
         closeAddTeacherDialog();
 
-        const datalist = ensureTeacherOptionsDatalist();
-
         const dialog = document.createElement('div');
         dialog.className = 'add-teacher-dialog';
-        dialog.style.cssText = 'margin-top: 6px; background: #ffffff; border: 1px solid #27ae60; border-radius: 6px; padding: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;';
+        dialog.style.cssText = 'margin-top: 6px; background: #ffffff; border: 1px solid #27ae60; border-radius: 6px; padding: 8px; display: flex; gap: 6px; flex-direction: column; align-items: stretch;';
 
         const input = document.createElement('input');
         input.type = 'text';
-        input.placeholder = 'Kürzel oder Name';
-        input.style.cssText = 'flex: 1; min-width: 160px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px;';
-        input.setAttribute('list', datalist.id);
+        input.placeholder = 'Lehrkraft suchen (Kürzel oder Name)';
+        input.style.cssText = 'width: 100%; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px;';
+
+        const selectionList = document.createElement('select');
+        selectionList.size = 6;
+        selectionList.style.cssText = 'width: 100%; min-height: 8rem; padding: 4px; border: 1px solid #ccc; border-radius: 4px; background: #fff;';
+
+        const selectedInfo = document.createElement('div');
+        selectedInfo.style.cssText = 'font-size: 0.85rem; color: #2c3e50; background: #eef7ff; border: 1px solid #cfe8ff; border-radius: 4px; padding: 4px 6px;';
+        selectedInfo.textContent = 'Keine Lehrkraft ausgewählt';
 
         const confirmButton = document.createElement('button');
         confirmButton.type = 'button';
         confirmButton.textContent = 'Hinzufügen';
         confirmButton.style.cssText = 'padding: 4px 8px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer;';
+        confirmButton.disabled = true;
+        confirmButton.style.opacity = '0.6';
+
+        const buttonRow = document.createElement('div');
+        buttonRow.style.cssText = 'display: flex; gap: 6px; justify-content: flex-end;';
+
+        let selectedTeacherValue = '';
+
+        function setSelectedTeacher(value) {
+            selectedTeacherValue = value || '';
+            if (selectedTeacherValue) {
+                selectedInfo.textContent = `Ausgewählt: ${getTeacherDisplayName(selectedTeacherValue)}`;
+                confirmButton.disabled = false;
+                confirmButton.style.opacity = '1';
+            } else {
+                selectedInfo.textContent = 'Keine Lehrkraft ausgewählt';
+                confirmButton.disabled = true;
+                confirmButton.style.opacity = '0.6';
+            }
+        }
+
+        function renderSelectionList(filteredOptions, eligibleCount) {
+            selectionList.innerHTML = '';
+            if (!filteredOptions.length) {
+                const emptyOption = document.createElement('option');
+                emptyOption.value = '';
+                if (eligibleCount <= 0) {
+                    emptyOption.textContent = 'Keine verfügbaren Lehrkräfte (Stundenplan/Soll)';
+                } else {
+                    emptyOption.textContent = 'Keine Treffer';
+                }
+                emptyOption.disabled = true;
+                selectionList.appendChild(emptyOption);
+                setSelectedTeacher('');
+                if (eligibleCount <= 0) {
+                    selectedInfo.textContent = 'Keine verfügbare Lehrkraft für diesen Slot';
+                }
+                return;
+            }
+
+            filteredOptions.forEach(opt => {
+                if (!opt) {
+                    return;
+                }
+                const optionEl = document.createElement('option');
+                optionEl.value = opt.value;
+                optionEl.textContent = opt.display || opt.value;
+                selectionList.appendChild(optionEl);
+            });
+
+            const preferredValue = selectedTeacherValue && filteredOptions.some(opt => opt && opt.value === selectedTeacherValue)
+                ? selectedTeacherValue
+                : filteredOptions[0].value;
+            selectionList.value = preferredValue;
+            setSelectedTeacher(preferredValue);
+        }
+
+        function refreshSelectionList() {
+            const eligible = getEligibleTeacherOptionsForSlot(
+                floorContainer.dataset.day,
+                floorContainer.dataset.break,
+                floorContainer
+            );
+            const filtered = filterTeacherOptions(input.value, eligible);
+            renderSelectionList(filtered, eligible.length);
+        }
+
+        input.addEventListener('input', refreshSelectionList);
+        input.addEventListener('keydown', (evt) => {
+            if (evt.key === 'ArrowDown') {
+                evt.preventDefault();
+                selectionList.focus();
+            }
+            if (evt.key === 'Enter') {
+                evt.preventDefault();
+                confirmButton.click();
+            }
+        });
+
+        selectionList.addEventListener('change', () => {
+            setSelectedTeacher(selectionList.value);
+        });
+        selectionList.addEventListener('click', () => {
+            setSelectedTeacher(selectionList.value);
+        });
+        selectionList.addEventListener('dblclick', () => {
+            confirmButton.click();
+        });
+        selectionList.addEventListener('keydown', (evt) => {
+            if (evt.key === 'Enter') {
+                evt.preventDefault();
+                confirmButton.click();
+            }
+        });
+
         confirmButton.addEventListener('click', () => {
-            handleAddTeacherConfirm(floorContainer, floorContainer.dataset.day, floorContainer.dataset.break, input.value.trim());
+            handleAddTeacherConfirm(
+                floorContainer,
+                floorContainer.dataset.day,
+                floorContainer.dataset.break,
+                selectedTeacherValue
+            );
         });
 
         const cancelButton = document.createElement('button');
@@ -347,15 +833,22 @@
             closeAddTeacherDialog();
         });
 
+        buttonRow.appendChild(cancelButton);
+        buttonRow.appendChild(confirmButton);
+
         dialog.appendChild(input);
-        dialog.appendChild(confirmButton);
-        dialog.appendChild(cancelButton);
+        dialog.appendChild(selectionList);
+        dialog.appendChild(selectedInfo);
+        dialog.appendChild(buttonRow);
 
         floorContainer.appendChild(dialog);
         activeAddDialog = dialog;
 
+        refreshSelectionList();
+
         setTimeout(() => {
             input.focus();
+            input.select();
         }, 0);
     }
 
@@ -376,8 +869,8 @@
         chip.remove();
         ensurePlaceholder(teachersContainer);
 
-        hasChanges = true;
-        updateSaveButton();
+        updateTeacherCountsTable();
+        setHasChanges(true);
         showSuccessMessage(`${getTeacherDisplayName(teacherValue)} von ${floorName} entfernt`);
     }
 
@@ -609,6 +1102,24 @@
             return;
         }
 
+        const sameSlotAssignment = findTeacherInSameSlot(draggedTeacher.teacher, targetDay, targetBreak, originalChip);
+        if (sameSlotAssignment) {
+            const existingFloor = sameSlotAssignment.dataset.floor || 'unbekannt';
+            const { dayLabel, breakLabel } = getSlotLabels(targetDay, targetBreak);
+            showErrorMessage(
+                `${getTeacherDisplayName(draggedTeacher.teacher)} ist am ${dayLabel} (${breakLabel}) bereits im Stockwerk ${existingFloor} eingeplant.`
+            );
+            resetDragState();
+            return;
+        }
+
+        const availabilityViolation = getAvailabilityViolationMessage(draggedTeacher.teacher, targetDay, targetBreak);
+        if (availabilityViolation) {
+            showErrorMessage(availabilityViolation);
+            resetDragState();
+            return;
+        }
+
         const sourceTeachersContainer = originalChip.closest('.teachers-container');
         originalChip.remove();
         ensurePlaceholder(sourceTeachersContainer);
@@ -631,8 +1142,8 @@
         teachersContainer.appendChild(chip);
         animateChip(chip);
 
-        hasChanges = true;
-        updateSaveButton();
+        updateTeacherCountsTable();
+        setHasChanges(true);
         showSuccessMessage(`${draggedTeacher.display || draggedTeacher.teacher} → ${targetFloorName}`);
 
         resetDragState();
@@ -757,8 +1268,7 @@
             });
 
             if (response.ok) {
-                hasChanges = false;
-                updateSaveButton();
+                setHasChanges(false);
                 saveButton.textContent = '✅ Gespeichert';
                 setTimeout(() => {
                     updateSaveButton();
@@ -790,7 +1300,15 @@
 
     // Initialisierung der Drag-and-Drop-Funktionalität
     function initializeDragAndDrop() {
-        ensureTeacherOptionsDatalist();
+        updateTeacherCountsTable();
+        updateSaveButton();
+
+        const teacherCountFilter = document.getElementById('teacherCountFilter');
+        if (teacherCountFilter && !teacherCountFilter.dataset.bound) {
+            teacherCountFilter.addEventListener('change', applyTeacherCountFilter);
+            teacherCountFilter.dataset.bound = '1';
+        }
+        applyTeacherCountFilter();
     }
 
     // Initialisiere nach dem Laden

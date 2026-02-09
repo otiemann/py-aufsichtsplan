@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import logging
+import multiprocessing as mp
 import os
+import queue
 import time
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Type
 
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
@@ -92,6 +96,51 @@ def _parse_num_workers() -> int:
         return 8
 
 
+def _use_solver_subprocess() -> bool:
+    raw = os.getenv("SCHEDULER_SOLVER_SUBPROCESS", "").strip().lower()
+    if not raw:
+        return os.name == "nt"
+    return raw not in {"0", "false", "off", "no"}
+
+
+def _solver_worker(payload: dict, result_queue: "mp.Queue") -> None:
+    try:
+        from .cp_sat_solver import BreakSupervisionSolver
+
+        solver = BreakSupervisionSolver(**payload)
+        result = solver.solve()
+        result_queue.put(("ok", result))
+    except Exception as exc:  # pragma: no cover - defensive for native crashes
+        result_queue.put(("err", f"{type(exc).__name__}: {exc}"))
+
+
+def _solve_in_subprocess(payload: dict, timeout_seconds: float) -> "SolverResult | None":
+    ctx = mp.get_context("spawn")
+    result_queue: mp.Queue = ctx.Queue()
+    proc = ctx.Process(target=_solver_worker, args=(payload, result_queue), daemon=True)
+    proc.start()
+
+    timeout = max(10.0, timeout_seconds + 20.0)
+    try:
+        status, data = result_queue.get(timeout=timeout)
+    except (queue.Empty, EOFError):
+        logger.error("Solver-Subprozess hat nach %.1fs nicht geantwortet (oder ist abgestürzt).", timeout)
+        if proc.is_alive():
+            proc.terminate()
+        proc.join(timeout=2.0)
+        return None
+
+    proc.join(timeout=2.0)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=2.0)
+
+    if status != "ok":
+        logger.error("Solver-Subprozess fehlgeschlagen: %s", data)
+        return None
+    return data
+
+
 def daterange(start: date, end: date) -> Iterable[date]:
     current = start
     while current <= end:
@@ -136,32 +185,29 @@ def ensure_slots(
 
 
 def clear_assignments(db: Session, start_date: date, end_date: date) -> None:
-    slot_ids = [
-        s_id
-        for (s_id,) in (
-            db.query(DutySlot.id)
-            .filter(DutySlot.date >= start_date, DutySlot.date <= end_date)
-            .all()
-        )
-    ]
-    if not slot_ids:
-        return
+    slot_ids_stmt = select(DutySlot.id).where(
+        DutySlot.date >= start_date,
+        DutySlot.date <= end_date,
+    )
 
-    max_attempts = 5
+    max_attempts = 10
     for attempt in range(1, max_attempts + 1):
         try:
             (
                 db.query(Assignment)
-                .filter(Assignment.duty_slot_id.in_(slot_ids))
+                .filter(Assignment.duty_slot_id.in_(slot_ids_stmt))
                 .delete(synchronize_session=False)
             )
             db.commit()
             return
-        except OperationalError:
+        except OperationalError as exc:
             db.rollback()
             if attempt == max_attempts:
                 raise
-            time.sleep(0.1 * attempt)
+            # Bei SQLite-Locks etwas länger warten, damit der Schreiblock frei wird.
+            wait = min(5.0, 0.5 * attempt)
+            logger.warning("DB gesperrt beim Löschen der Zuweisungen (Versuch %s/%s): %s", attempt, max_attempts, exc)
+            time.sleep(wait)
 
 
 def _break_periods(break_index: int) -> Tuple[Optional[int], Optional[int]]:
@@ -276,40 +322,108 @@ def _adjust_targets_for_total_need(teacher_specs: List["TeacherSpec"], break_slo
         for need in slot.needs.values()
     )
     total_nominal = sum(spec.nominal_target for spec in teacher_specs)
-    if total_nominal >= total_need:
+    if total_nominal == total_need:
         return {}
 
-    extra = total_need - total_nominal
-    weights: Dict[int, int] = {}
-    for spec in teacher_specs:
-        weight = max(spec.availability_days, 1)
-        if weight == 0 and spec.nominal_target > 0:
-            weight = 1
-        weights[spec.id] = weight
-    weight_sum = sum(weights.values())
-    if weight_sum <= 0:
-        weight_sum = len(teacher_specs) or 1
+    anchor_ordinal = min(
+        (
+            slot.date.toordinal()
+            for slot in break_slots
+            if getattr(slot, "date", None) is not None
+        ),
+        default=0,
+    )
+
+    def tie_rank(spec_id: int) -> int:
+        # Deterministisch, aber unabhängig von der Listen-/Alphabet-Reihenfolge.
+        token = f"{anchor_ordinal}:{spec_id}".encode("utf-8")
+        digest = hashlib.blake2b(token, digest_size=8).digest()
+        return int.from_bytes(digest, "big")
+
+    # Unterdeckung: zusätzliche Aufsichten proportional zur Verfügbarkeit verteilen.
+    if total_nominal < total_need:
+        extra = total_need - total_nominal
+        weights: Dict[int, int] = {}
         for spec in teacher_specs:
-            weights[spec.id] = 1
+            weight = max(spec.availability_days, 1)
+            if weight == 0 and spec.nominal_target > 0:
+                weight = 1
+            weights[spec.id] = weight
+        weight_sum = sum(weights.values())
+        if weight_sum <= 0:
+            weight_sum = len(teacher_specs) or 1
+            for spec in teacher_specs:
+                weights[spec.id] = 1
 
-    fractional: List[Tuple[float, "TeacherSpec"]] = []
-    allocated = 0
+        fractional: List[Tuple[float, "TeacherSpec"]] = []
+        allocated = 0
+        for spec in teacher_specs:
+            weight = weights.get(spec.id, 1)
+            raw_share = extra * weight / weight_sum
+            base_extra = int(raw_share)
+            spec.target = spec.nominal_target + base_extra
+            allocated += base_extra
+            fractional.append((raw_share - base_extra, spec))
+
+        remainder = extra - allocated
+        for _, spec in sorted(
+            fractional,
+            key=lambda item: (
+                item[0],
+                item[1].availability_days,
+                tie_rank(item[1].id),
+            ),
+            reverse=True,
+        ):
+            if remainder <= 0:
+                break
+            spec.target += 1
+            remainder -= 1
+
+        return {
+            spec.id: spec.target - spec.nominal_target
+            for spec in teacher_specs
+            if spec.target != spec.nominal_target
+        }
+
+    # Überdeckung: Sollwerte proportional herunterrechnen, damit die Verteilung
+    # gleichmäßiger bleibt und nicht viele bei 3/3 landen, während andere stark abfallen.
+    if total_nominal <= 0:
+        return {}
+
+    fractional_down: List[Tuple[float, "TeacherSpec"]] = []
+    allocated_down = 0
     for spec in teacher_specs:
-        weight = weights.get(spec.id, 1)
-        raw_share = extra * weight / weight_sum
-        base_extra = int(raw_share)
-        spec.target = spec.nominal_target + base_extra
-        allocated += base_extra
-        fractional.append((raw_share - base_extra, spec))
+        nominal = max(0, int(spec.nominal_target))
+        if nominal <= 0:
+            spec.target = 0
+            continue
+        raw_target = total_need * nominal / total_nominal
+        base_target = int(raw_target)
+        spec.target = base_target
+        allocated_down += base_target
+        fractional_down.append((raw_target - base_target, spec))
 
-    remainder = extra - allocated
-    for _, spec in sorted(fractional, key=lambda item: item[0], reverse=True):
-        if remainder <= 0:
+    remainder_down = total_need - allocated_down
+    for _, spec in sorted(
+        fractional_down,
+        key=lambda item: (
+            item[0],
+            -item[1].availability_days,
+            tie_rank(item[1].id),
+        ),
+        reverse=True,
+    ):
+        if remainder_down <= 0:
             break
         spec.target += 1
-        remainder -= 1
+        remainder_down -= 1
 
-    return {spec.id: spec.target - spec.nominal_target for spec in teacher_specs}
+    return {
+        spec.id: spec.target - spec.nominal_target
+        for spec in teacher_specs
+        if spec.target != spec.nominal_target
+    }
 
 
 def _preflight_checks(
@@ -412,7 +526,7 @@ def generate_assignments(
     start_date: date,
     end_date: date,
     breaks_per_day: int,
-) -> None:
+) -> int:
     try:
         from ortools.sat.python import cp_model  # type: ignore
         from .cp_sat_solver import (
@@ -433,15 +547,14 @@ def generate_assignments(
                 "CP-SAT Scheduler nicht verfügbar: %s. Bitte ortools installieren/neu installieren (z.B. via 'pip install ortools').",
                 exc,
             )
-        return
+        return 0
 
     floors: List[Floor] = db.query(Floor).order_by(Floor.order_index, Floor.name).all()
     if not floors:
         logger.warning("Keine Stockwerke definiert – Abbruch der Planung.")
-        return
+        return 0
 
     duty_slots = ensure_slots(db, start_date, end_date, breaks_per_day)
-    clear_assignments(db, start_date, end_date)
 
     floors_by_id: Dict[int, Floor] = {floor.id: floor for floor in floors}
 
@@ -459,26 +572,34 @@ def generate_assignments(
 
     if not teachers:
         logger.warning("Keine geeigneten Lehrkräfte mit Soll-Aufsichten gefunden.")
-        return
+        return 0
 
     teacher_specs = _build_teacher_specs(teachers, TeacherSpec)
     break_slots = _build_break_slots(start_date, end_date, floors, breaks_per_day, BreakSlotSpec)
 
     adjustments = _adjust_targets_for_total_need(teacher_specs, break_slots)
     if adjustments:
+        net_change = sum(adjustments.values())
+        if net_change > 0:
+            headline = "Zusätzliche Aufsichten erforderlich (%s insgesamt). Anpassung: %s"
+        elif net_change < 0:
+            headline = "Soll-Aufsichten wegen Überdeckung reduziert (%s insgesamt). Anpassung: %s"
+        else:
+            headline = "Soll-Aufsichten proportional angepasst (%s insgesamt). Anpassung: %s"
+
         logger.info(
-            "Zusätzliche Aufsichten erforderlich (%s insgesamt). Verteilung auf Lehrkräfte: %s",
-            sum(adjustments.values()),
+            headline,
+            net_change,
             ", ".join(
-                f"{next((t.abbreviation or t.last_name) for t in teachers if t.id == teacher_id)}:+{extra}"
+                f"{next((t.abbreviation or t.last_name) for t in teachers if t.id == teacher_id)}:{extra:+d}"
                 for teacher_id, extra in adjustments.items()
-                if extra > 0
+                if extra != 0
             ) or "keine",
         )
 
     if not break_slots:
         logger.info("Keine Break-Slots mit Bedarf im angegebenen Zeitraum.")
-        return
+        return 0
 
     fairness_band = _parse_fairness_band()
     max_one_per_day = _max_one_per_day_enabled()
@@ -491,24 +612,41 @@ def generate_assignments(
     for message in preflight_messages:
         logger.error("[PREFLIGHT] %s", message)
 
-    solver = BreakSupervisionSolver(
-        teachers=teacher_specs,
-        break_slots=break_slots,
-        floor_ids=[floor_id for floor_id, need in {f.id: f.required_per_break for f in floors}.items() if need],
-        fairness_band=fairness_band,
-        max_one_per_day=max_one_per_day,
-        time_limit_s=time_limit,
-        num_workers=num_workers,
-        band_penalty=band_penalty,
-        max_extra_duties=max_extra_duties,
-    )
+    solver_payload = {
+        "teachers": teacher_specs,
+        "break_slots": break_slots,
+        "floor_ids": [floor_id for floor_id, need in {f.id: f.required_per_break for f in floors}.items() if need],
+        "fairness_band": fairness_band,
+        "max_one_per_day": max_one_per_day,
+        "time_limit_s": time_limit,
+        "num_workers": num_workers,
+        "band_penalty": band_penalty,
+        "max_extra_duties": max_extra_duties,
+    }
 
-    result = solver.solve()
+    solver = BreakSupervisionSolver(**solver_payload)
+
+    if _use_solver_subprocess():
+        logger.info("Starte Solver in Subprozess (Stabilitätsmodus).")
+        result = _solve_in_subprocess(solver_payload, time_limit)
+        if result is None:
+            logger.error("Planung fehlgeschlagen: Solver-Prozess ist abgestürzt.")
+            return -1
+    else:
+        result = solver.solve()
 
     if result.status_enum not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         logger.error("Planung fehlgeschlagen (Solver-Status: %s).", result.status)
         _log_shortages(solver, floors_by_id)
-        return
+        return 0
+
+    # Erst nach erfolgreichem Solver-Lauf alte Zuweisungen löschen,
+    # damit ein Fehlschlag nicht den bestehenden Plan leert.
+    try:
+        clear_assignments(db, start_date, end_date)
+    except OperationalError as exc:
+        logger.error("Planung abgebrochen: Datenbank ist gesperrt (%s).", exc)
+        return 0
 
     duty_slot_lookup: Dict[Tuple[date, int, int], DutySlot] = {
         (slot.date, slot.break_index, slot.floor_id): slot
@@ -578,3 +716,75 @@ def generate_assignments(
                 load,
                 target,
             )
+
+    return assignments_created
+
+
+def generate_repeating_period_assignments(
+    db: Session,
+    period_start: date,
+    weeks: int,
+    breaks_per_day: int,
+) -> int:
+    """Erzeugt einen Wochenplan (Mo–Fr) und wendet ihn identisch auf mehrere Wochen an."""
+    if weeks < 1:
+        return 0
+
+    template_start = period_start - timedelta(days=period_start.weekday())
+    template_end = template_start + timedelta(days=4)
+    period_end = template_start + timedelta(days=(weeks * 7) - 1)
+
+    # Slots für den gesamten Zeitraum bereitstellen und alte Zuweisungen entfernen.
+    ensure_slots(db, template_start, period_end, breaks_per_day)
+
+    created_week = generate_assignments(db, template_start, template_end, breaks_per_day)
+    if created_week <= 0 or weeks == 1:
+        return created_week
+
+    # Bestehende Zuweisungen für die Folgewochen entfernen (Woche 2..N).
+    followup_start = template_start + timedelta(days=7)
+    if followup_start <= period_end:
+        try:
+            clear_assignments(db, followup_start, period_end)
+        except OperationalError as exc:
+            logger.error("Folgewochen nicht bereinigt (DB gesperrt): %s", exc)
+            return created_week
+
+    # Template (TagOffset, Pause, Floor) -> [TeacherIDs]
+    template_rows = (
+        db.query(DutySlot.date, DutySlot.break_index, DutySlot.floor_id, Assignment.teacher_id)
+        .join(Assignment, Assignment.duty_slot_id == DutySlot.id)
+        .filter(DutySlot.date >= template_start, DutySlot.date <= template_end)
+        .all()
+    )
+
+    template_map: Dict[Tuple[int, int, int], List[int]] = defaultdict(list)
+    for duty_date, break_index, floor_id, teacher_id in template_rows:
+        day_offset = int((duty_date - template_start).days)
+        template_map[(day_offset, int(break_index), int(floor_id))].append(int(teacher_id))
+
+    all_slots = (
+        db.query(DutySlot)
+        .filter(DutySlot.date >= template_start, DutySlot.date <= period_end)
+        .all()
+    )
+    slot_lookup: Dict[Tuple[date, int, int], int] = {
+        (slot.date, int(slot.break_index), int(slot.floor_id)): int(slot.id)
+        for slot in all_slots
+    }
+
+    to_add: List[Assignment] = []
+    for week_offset in range(1, weeks):
+        for (day_offset, break_index, floor_id), teacher_ids in template_map.items():
+            target_date = template_start + timedelta(days=(week_offset * 7) + day_offset)
+            duty_slot_id = slot_lookup.get((target_date, break_index, floor_id))
+            if duty_slot_id is None:
+                continue
+            for teacher_id in teacher_ids:
+                to_add.append(Assignment(duty_slot_id=duty_slot_id, teacher_id=teacher_id))
+
+    if to_add:
+        db.add_all(to_add)
+        db.commit()
+
+    return created_week * weeks

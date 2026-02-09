@@ -83,8 +83,14 @@ def generate_pdf(db: Session, start_date: date, end_date: date) -> bytes:
     styles = getSampleStyleSheet()
 
     story: List = []
-    title = "Pausenaufsicht (Woche Mo–Fr)"
+    title = "Pausenaufsicht (Wochenplan Mo–Fr)"
     story.append(Paragraph(title, styles["Title"]))
+    story.append(
+        Paragraph(
+            f"Gültig: {start_date.strftime('%d.%m.%Y')} bis {end_date.strftime('%d.%m.%Y')} (wiederholt sich wöchentlich)",
+            styles["Normal"],
+        )
+    )
     story.append(Spacer(1, 12))
 
     bpd = 4
@@ -127,7 +133,13 @@ def generate_pdf_by_floor(db: Session, start_date: date, end_date: date) -> byte
     styles = getSampleStyleSheet()
 
     story: List = []
-    story.append(Paragraph("Pausenaufsicht nach Stockwerken", styles["Title"]))
+    story.append(Paragraph("Pausenaufsicht nach Stockwerken (Wochenplan)", styles["Title"]))
+    story.append(
+        Paragraph(
+            f"Gültig: {start_date.strftime('%d.%m.%Y')} bis {end_date.strftime('%d.%m.%Y')} (wiederholt sich wöchentlich)",
+            styles["Normal"],
+        )
+    )
     story.append(Spacer(1, 12))
 
     bpd = 4
