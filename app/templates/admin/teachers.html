@@ -1,14 +1,8 @@
 {% extends "base.html" %} {% block content %}
 <style>
-    :root {
-        --teachers-toolbar-top: 76px;
-        --teachers-header-top: 172px;
-    }
-
     .toolbar {
         position: sticky;
         top: 76px;
-        top: var(--teachers-toolbar-top);
         z-index: 8;
         background: #ffffff;
         padding: 0.75rem;
@@ -45,14 +39,7 @@
     .table-sticky thead th {
         background: #f8fafc;
         z-index: 4;
-    }
-
-    @supports ((position: sticky) or (position: -webkit-sticky)) {
-        .table-sticky thead th {
-            position: sticky;
-            top: 172px;
-            top: var(--teachers-header-top);
-        }
+        position: static;
     }
 
     .row-exempt {
@@ -298,31 +285,9 @@
         const selectionStatus = document.getElementById('selectionStatus');
         const table = document.querySelector('table.table-sticky');
         const rows = table ? Array.from(table.querySelectorAll('tbody tr[id^="teacher-"]')) : [];
-        const appHeader = document.querySelector('.app-header');
-        const toolbar = document.querySelector('.toolbar');
 
         const STORAGE_KEY = 'teachers_scroll_target';
         const normalize = (value) => (value || '').toString().toLowerCase().trim();
-
-        function toPxNumber(value, fallback) {
-            const parsed = parseFloat(value);
-            if (isNaN(parsed)) {
-                return fallback;
-            }
-            return parsed;
-        }
-
-        function updateStickyOffsets() {
-            if (!toolbar || !document.documentElement || !document.documentElement.style) {
-                return;
-            }
-            const headerHeight = appHeader ? appHeader.getBoundingClientRect().height : 76;
-            const toolbarTopFromCss = window.getComputedStyle ? window.getComputedStyle(toolbar).top : '';
-            const toolbarTop = Math.max(Math.round(toPxNumber(toolbarTopFromCss, headerHeight)), Math.round(headerHeight));
-            const toolbarHeight = Math.round(toolbar.getBoundingClientRect().height);
-            document.documentElement.style.setProperty('--teachers-toolbar-top', toolbarTop + 'px');
-            document.documentElement.style.setProperty('--teachers-header-top', (toolbarTop + toolbarHeight) + 'px');
-        }
 
         function isRowVisible(row) {
             return row && row.style.display !== 'none';
@@ -426,11 +391,7 @@
             if (payload && typeof payload.y === 'number') {
                 window.scrollTo(0, payload.y);
             }
-            updateStickyOffsets();
         });
-
-        window.addEventListener('resize', updateStickyOffsets);
-        window.setTimeout(updateStickyOffsets, 0);
 
         if (searchInput) {
             searchInput.addEventListener('input', applyFilters);
@@ -472,7 +433,6 @@
         });
 
         applyFilters();
-        updateStickyOffsets();
     })();
 
     function showAttendanceEdit(teacherId) {

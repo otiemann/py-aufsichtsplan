@@ -12,9 +12,30 @@ import urllib.error
 import faulthandler
 import multiprocessing as mp
 
-import uvicorn
+try:
+	import uvicorn
+except ModuleNotFoundError as exc:
+	uvicorn = None
+	_UVICORN_IMPORT_ERROR = exc
+else:
+	_UVICORN_IMPORT_ERROR = None
 
 # Hinweis: Import der App erfolgt erst im __main__-Block nach Umgebungs-Setup
+
+
+def _missing_dependency_message(module_name: str) -> str:
+	requirements_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")
+	return (
+		f"Fehlende Python-Abhaengigkeit: '{module_name}'.\n\n"
+		"Installiere die Projekt-Abhaengigkeiten in deiner aktiven virtuellen Umgebung, z. B.:\n"
+		f"  python -m pip install -r {requirements_path}\n"
+	)
+
+
+def ensure_uvicorn():
+	if uvicorn is None:
+		raise SystemExit(_missing_dependency_message("uvicorn")) from _UVICORN_IMPORT_ERROR
+	return uvicorn
 
 
 def get_base_dir() -> str:
@@ -183,10 +204,11 @@ def pick_preferred_port(preferred_ports: list[int]) -> int:
 
 
 def run_browser(fastapi_app, log_config: dict | None) -> None:
+	uvicorn_module = ensure_uvicorn()
 	port = pick_preferred_port([8000, 8001])
 	url = f"http://127.0.0.1:{port}"
 	open_browser_when_ready(url)
-	uvicorn.run(
+	uvicorn_module.run(
 		fastapi_app,
 		host="127.0.0.1",
 		port=port,
@@ -218,14 +240,15 @@ def wait_until_ready(url: str, timeout_seconds: float = 15.0) -> None:
 
 
 def run_server_in_thread(fastapi_app, host: str, port: int, log_config: dict | None):
-	config = uvicorn.Config(
+	uvicorn_module = ensure_uvicorn()
+	config = uvicorn_module.Config(
 		fastapi_app,
 		host=host,
 		port=port,
 		reload=False,
 		log_config=log_config,
 	)
-	server = uvicorn.Server(config)
+	server = uvicorn_module.Server(config)
 	thread = threading.Thread(target=server.run, daemon=True)
 	thread.start()
 	return server, thread
@@ -322,7 +345,10 @@ if __name__ == "__main__":
 		pass
 
 	# Import jetzt, nachdem ENV & CWD gesetzt sind
-	from app.main import app as fastapi_app  # type: ignore
+	try:
+		from app.main import app as fastapi_app  # type: ignore
+	except ModuleNotFoundError as exc:
+		raise SystemExit(_missing_dependency_message(exc.name or "unbekannt")) from exc
 
 	desktop_mode = os.environ.get("APP_DESKTOP", "1").lower() not in {"0", "false", "off", "no"}
 	if desktop_mode:
