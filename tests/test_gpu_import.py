@@ -13,3 +13,9 @@ def test_parse_gpu_line_allows_empty_room() -> None:
     parsed = parse_gpu_line('4063;"12ZU4A";"HOO";"ENG";"";2;13;;')
 
     assert parsed == ("HOO", 1, 13, None)
+
+
+def test_parse_gpu_line_uses_csv_quoting() -> None:
+    parsed = parse_gpu_line('4063;"12;ZU4A";"HOO";"ENG";"3035;A";2;13;;')
+
+    assert parsed == ("HOO", 1, 13, "3035;A")

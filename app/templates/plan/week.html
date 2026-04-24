@@ -42,7 +42,7 @@
             {% for c in counts %}
             {% set teacher_key = c.abbreviation if c.abbreviation else c.last_name ~ ', ' ~ c.first_name %}
             {% set reached_max = (c.target and c.count >= c.target) %}
-            <tr class="teacher-count-row" data-teacher-key="{{ teacher_key }}" data-target="{{ c.target or 0 }}" {% if reached_max %}style="background: #fff7ed;"{% endif %}>
+            <tr class="teacher-count-row" data-teacher-id="{{ c.teacher_id }}" data-teacher-key="{{ teacher_key }}" data-target="{{ c.target or 0 }}" {% if reached_max %}style="background: #fff7ed;"{% endif %}>
                 <td>
                     {{ c.abbreviation }}
                     {% if c.exempt %}

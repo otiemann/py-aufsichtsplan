@@ -47,6 +47,69 @@
     <p><strong>Hinweis:</strong> Der aktuelle Zeitraum-Plan wird überschrieben.</p>
 </div>
 
+{% if planning_error %}
+<div class="page-card warn">
+    <h3>Planung nicht erstellt</h3>
+    <p>{{ planning_error }}</p>
+</div>
+{% endif %}
+
+{% if planning_diagnostics %}
+<div class="page-card info">
+    <h3>Planungs-Diagnose</h3>
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:0.6rem; margin-bottom:0.8rem;">
+        <div><strong>Bedarf/Woche:</strong><br>{{ planning_diagnostics.total_need }}</div>
+        <div><strong>Soll/Woche:</strong><br>{{ planning_diagnostics.total_target }}</div>
+        <div><strong>Aktive Lehrkräfte:</strong><br>{{ planning_diagnostics.active_teachers }} / {{ planning_diagnostics.total_teachers }}</div>
+        <div><strong>Relevante Stunden:</strong><br>{{ planning_diagnostics.relevant_lessons }} / {{ planning_diagnostics.total_lessons }}</div>
+    </div>
+
+    {% if planning_diagnostics.issues %}
+    <ul style="margin:0 0 0.8rem 1.2rem; padding:0;">
+        {% for issue in planning_diagnostics.issues %}
+        <li style="margin-bottom:0.35rem;">
+            <strong>{{ issue.message }}</strong>
+            <span style="color:#475569;">{{ issue.hint }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>Keine offensichtlichen Datenprobleme gefunden.</p>
+    {% endif %}
+
+    {% if planning_diagnostics.shortage_slots %}
+    <details>
+        <summary><strong>Engpässe je Zeitfenster anzeigen</strong></summary>
+        <table style="margin-top:0.6rem;">
+            <thead>
+                <tr>
+                    <th>Tag</th>
+                    <th>Pause</th>
+                    <th>Stockwerk</th>
+                    <th>Bedarf</th>
+                    <th>Verfügbar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for slot in planning_diagnostics.shortage_slots %}
+                <tr>
+                    <td>{{ slot.day }}</td>
+                    <td>{{ slot.break_label }}</td>
+                    <td>{{ slot.floor }}</td>
+                    <td>{{ slot.need }}</td>
+                    <td>{{ slot.available }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if planning_diagnostics.shortage_slots_total > planning_diagnostics.shortage_slots|length %}
+        <p><small>Es werden die ersten {{ planning_diagnostics.shortage_slots|length }} von {{ planning_diagnostics.shortage_slots_total }} Engpässen angezeigt.</small></p>
+        {% endif %}
+    </details>
+    {% endif %}
+</div>
+{% endif %}
+
 <div class="page-card">
     <h3>Pausenaufsichtsplan (Wochenplan)</h3>
     {% include "plan/week_grid.html" %}
@@ -77,7 +140,7 @@
             {% for c in counts %}
             {% set teacher_key = c.abbreviation if c.abbreviation else c.last_name ~ ', ' ~ c.first_name %}
             {% set reached_max = (c.target and c.count >= c.target) %}
-            <tr class="teacher-count-row" data-teacher-key="{{ teacher_key }}" data-target="{{ c.target or 0 }}" {% if reached_max %}style="background: #fff7ed;"{% endif %}>
+            <tr class="teacher-count-row" data-teacher-id="{{ c.teacher_id }}" data-teacher-key="{{ teacher_key }}" data-target="{{ c.target or 0 }}" {% if reached_max %}style="background: #fff7ed;"{% endif %}>
                 <td>
                     {{ c.abbreviation }}
                     {% if c.exempt %}

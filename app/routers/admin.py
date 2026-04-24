@@ -502,6 +502,11 @@ async def import_gpu(file: UploadFile = File(...), db: Session = Depends(get_db)
         flash_msg = f"GPU-Import erfolgreich: {stats['imported']} Stunden importiert, Anwesenheitstage automatisch aktualisiert"
         if stats['unknown_teachers'] > 0:
             flash_msg += f", {stats['unknown_teachers']} unbekannte Lehrkräfte ignoriert"
+            examples = stats.get("unknown_teacher_examples") or []
+            if examples:
+                flash_msg += f" ({', '.join(examples[:5])})"
+        if stats.get("errors"):
+            flash_msg += f", {stats['errors']} Zeilen übersprungen"
         
         response.set_cookie("flash", flash_msg, max_age=10)
         return response

@@ -73,11 +73,13 @@
     {% if teacher_options_json %}
     <script>
         window.teacherOptions = {{ teacher_options_json | safe }};
+        window.floorIdsByName = {{ floor_ids_by_name_json | default('{}') | safe }};
         window.planPeriodWeeks = {{ period_weeks | default(1) }};
     </script>
     {% else %}
     <script>
         window.teacherOptions = window.teacherOptions || [];
+        window.floorIdsByName = window.floorIdsByName || {};
         window.planPeriodWeeks = {{ period_weeks | default(1) }};
     </script>
     {% endif %}
@@ -112,19 +114,21 @@
                     ondragenter="handleDragEnter(event)">
                     {% for line in grid[d_idx][b] %} {% set outer_loop = loop %} {% for floor_line in [line] %} {% if ':' in floor_line %} {% set floor_name, teachers_str = floor_line.split(':', 1) %}
                     {% set has_teachers = teachers_str.strip() != '—' and teachers_str.strip() != '' %}
-                    <div class="floor-container" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-empty="{{ 'true' if not has_teachers else 'false' }}" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
+                    <div class="floor-container" data-floor="{{ floor_name.strip() }}" data-floor-id="{{ floor_ids_by_name.get(floor_name.strip(), '') if floor_ids_by_name is defined else '' }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-empty="{{ 'true' if not has_teachers else 'false' }}" style="margin: 2px 0; padding: 4px; border-left: 3px solid #3498db; background: #f8f9fa; border-radius: 3px;">
                         <strong>{{ floor_name.strip() }}:</strong>
                         <div class="teachers-container" style="margin-top: 2px;">
                             {% if has_teachers %}
-                                {% for teacher in teachers_str.split(',') %}
+                                {% for teacher in teachers_str.split(';;') %}
                                     {% set teacher_raw = teacher.strip() %}
                                     {% if teacher_raw %}
                                         {% set parts = teacher_raw.split('|') %}
                                         {% set teacher_label = parts[0].strip() %}
-                                        {% set meta_ns = namespace(warn_reasons=[], room_hint='') %}
+                                        {% set meta_ns = namespace(warn_reasons=[], room_hint='', teacher_id='') %}
                                         {% for meta in parts[1:] %}
                                             {% set meta_value = meta.strip() %}
-                                            {% if meta_value.startswith('warn:') %}
+                                            {% if meta_value.startswith('id:') %}
+                                                {% set meta_ns.teacher_id = meta_value.split(':', 1)[1].strip() %}
+                                            {% elif meta_value.startswith('warn:') %}
                                                 {% set warn_payload = meta_value.split(':', 1)[1] %}
                                                 {% set meta_ns.warn_reasons = warn_payload.split(';') if warn_payload else [] %}
                                             {% elif meta_value.startswith('room-floor:') %}
@@ -133,6 +137,7 @@
                                         {% endfor %}
                                         {% set warn_reasons = meta_ns.warn_reasons %}
                                         {% set room_hint = meta_ns.room_hint %}
+                                        {% set teacher_id = meta_ns.teacher_id %}
                                         {% set teacher_warn = warn_reasons|length > 0 %}
                                         {% set teacher_room_hint = room_hint != '' %}
                                         {% set warn_ns = namespace(messages=[], details=[]) %}
@@ -158,7 +163,7 @@
                                         {% else %}
                                             {% set chip_style = chip_base_style ~ ' background: #e3f2fd; border: 1px solid #2196f3;' %}
                                         {% endif %}
-                                        <span class="teacher-chip{% if teacher_warn %} teacher-chip-warn{% endif %}{% if teacher_room_hint %} teacher-chip-room-match{% endif %}" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher_label }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-warning="{{ warn_reasons|join(';') if teacher_warn else '' }}" data-room-floor="{{ room_hint if teacher_room_hint else '' }}" {% if teacher_warn %}title="{{ warn_tooltip }}" aria-label="{{ warn_tooltip }}"{% endif %} style="{{ chip_style }}">
+                                        <span class="teacher-chip{% if teacher_warn %} teacher-chip-warn{% endif %}{% if teacher_room_hint %} teacher-chip-room-match{% endif %}" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher_label }}" data-teacher-id="{{ teacher_id }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-warning="{{ warn_reasons|join(';') if teacher_warn else '' }}" data-room-floor="{{ room_hint if teacher_room_hint else '' }}" {% if teacher_warn %}title="{{ warn_tooltip }}" aria-label="{{ warn_tooltip }}"{% endif %} style="{{ chip_style }}">
                                         <span class="teacher-chip-label">{{ teacher_label }}</span>
                                             {% if teacher_warn %}
                                                 <span class="teacher-warning" {% if teacher_warn %}title="{{ warn_tooltip }}"{% endif %} style="color: #e74c3c; font-weight: bold;">!</span>
@@ -215,9 +220,11 @@
     let hasChanges = false;
     let skipUnloadGuardUntil = 0;
     let draggedTeacher = null;
+    let draggedChip = null;
     let activeAddDialog = null;
 
     const teacherOptions = Array.isArray(window.teacherOptions) ? window.teacherOptions : [];
+    const floorIdsByName = window.floorIdsByName && typeof window.floorIdsByName === 'object' ? window.floorIdsByName : {};
     const planPeriodWeeks = Math.max(1, Number(window.planPeriodWeeks || 1));
     const WEEKDAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
     const BREAK_NAMES = ['0. Stunde', '2./3. Stunde', '4./5. Stunde', '6./7. Stunde'];
@@ -233,9 +240,17 @@
         if (!value) {
             return null;
         }
+        const numericId = Number(value);
+        if (Number.isInteger(numericId) && numericId > 0) {
+            const byId = teacherOptions.find(opt => Number(opt?.id) === numericId);
+            if (byId) {
+                return byId;
+            }
+        }
         const normalized = value.toLowerCase();
         return teacherOptions.find(opt => {
             if (!opt) return false;
+            if (String(opt.id || '') === value) return true;
             const optionValue = (opt.value || '').toLowerCase();
             const optionDisplay = (opt.display || '').toLowerCase();
             const optionAbbrev = (opt.abbreviation || '').toLowerCase();
@@ -493,6 +508,7 @@
         chip.className = 'teacher-chip';
         chip.draggable = true;
         chip.dataset.teacher = value;
+        chip.dataset.teacherId = teacherData.id ? String(teacherData.id) : '';
         chip.dataset.floor = floorName;
         chip.dataset.day = String(day);
         chip.dataset.break = String(breakIndex);
@@ -689,7 +705,7 @@
 
         removePlaceholder(teachersContainer);
 
-        const chip = createTeacherChip({ value: teacherValue, label: option.value }, floorContainer.dataset.floor, day, breakIndex);
+        const chip = createTeacherChip({ value: teacherValue, label: option.value, id: option.id }, floorContainer.dataset.floor, day, breakIndex);
         teachersContainer.appendChild(chip);
         animateChip(chip);
 
@@ -896,14 +912,16 @@
 
     function dragStart(event) {
         closeAddTeacherDialog();
+        draggedChip = event.target.closest('.teacher-chip');
 
         draggedTeacher = {
-            teacher: event.target.dataset.teacher,
-            floor: event.target.dataset.floor,
-            sourceDay: event.target.dataset.day,
-            sourceBreak: event.target.dataset.break,
+            teacher: draggedChip?.dataset.teacher,
+            teacherId: draggedChip?.dataset.teacherId || '',
+            floor: draggedChip?.dataset.floor,
+            sourceDay: draggedChip?.dataset.day,
+            sourceBreak: draggedChip?.dataset.break,
         };
-        draggedTeacher.display = event.target.querySelector('.teacher-chip-label')?.textContent?.trim() || getTeacherDisplayName(draggedTeacher.teacher);
+        draggedTeacher.display = draggedChip?.querySelector('.teacher-chip-label')?.textContent?.trim() || getTeacherDisplayName(draggedTeacher.teacher);
 
         if (!draggedTeacher.teacher || !draggedTeacher.floor) {
             console.error('Unvollständige Teacher-Daten beim Drag Start:', draggedTeacher);
@@ -1113,8 +1131,7 @@
     }
 
     function executeTeacherMove(targetFloorContainer, targetDay, targetBreak, targetFloorName) {
-        const selector = `[data-teacher="${draggedTeacher.teacher}"][data-floor="${draggedTeacher.floor}"][data-day="${draggedTeacher.sourceDay}"][data-break="${draggedTeacher.sourceBreak}"]`;
-        const originalChip = document.querySelector(selector);
+        const originalChip = draggedChip;
 
         if (!originalChip) {
             showErrorMessage('Ursprüngliche Lehrkraft nicht gefunden!');
@@ -1154,7 +1171,7 @@
         removePlaceholder(teachersContainer);
 
         const chip = createTeacherChip(
-            { value: draggedTeacher.teacher, label: draggedTeacher.display || draggedTeacher.teacher },
+            { value: draggedTeacher.teacher, label: draggedTeacher.display || draggedTeacher.teacher, id: draggedTeacher.teacherId },
             targetFloorName,
             targetDay,
             targetBreak
@@ -1172,6 +1189,7 @@
     function resetDragState() {
         // Reset
         draggedTeacher = null;
+        draggedChip = null;
 
         // Reset alle Highlights
         document.querySelectorAll('.drop-zone').forEach(zone => {
@@ -1254,18 +1272,27 @@
 
             zone.querySelectorAll('.floor-container').forEach(floorContainer => {
                 const floorName = floorContainer.querySelector('strong').textContent.replace(':', '').trim();
+                const parsedFloorId = Number(floorContainer.dataset.floorId || floorIdsByName[floorName] || 0);
+                const floorId = Number.isInteger(parsedFloorId) && parsedFloorId > 0 ? parsedFloorId : null;
                 const teachers = [];
+                const teacherIds = [];
 
                 floorContainer.querySelectorAll('.teacher-chip').forEach(chip => {
                     teachers.push(chip.dataset.teacher);
+                    const parsedTeacherId = Number(chip.dataset.teacherId || 0);
+                    if (Number.isInteger(parsedTeacherId) && parsedTeacherId > 0) {
+                        teacherIds.push(parsedTeacherId);
+                    }
                 });
 
                 const key = `${day}-${breakIndex}-${floorName}`;
                 assignments[key] = {
                     day: day,
                     break_index: breakIndex,
+                    floor_id: floorId,
                     floor: floorName,
-                    teachers: teachers
+                    teachers: teachers,
+                    teacher_ids: teacherIds
                 };
             });
         });

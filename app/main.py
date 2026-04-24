@@ -3,6 +3,8 @@ import signal
 import threading
 import shutil
 import time
+import sqlite3
+import tempfile
 from datetime import datetime
 from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +16,8 @@ from starlette.concurrency import run_in_threadpool
 from .database import Base, engine, SessionLocal, SQLALCHEMY_DATABASE_URL
 
 app = FastAPI(title="Pausenaufsichtsplan")
+
+MINIMUM_RESTORE_TABLES = {"teachers", "floors", "duty_slots", "assignments"}
 
 # Version info import
 try:
@@ -103,8 +107,38 @@ def get_db_file_path() -> str:
     raise ValueError("Nur SQLite-Datenbanken werden für Backup/Restore unterstützt")
 
 
+def _create_sqlite_backup(source_path: str, target_path: str) -> None:
+    with sqlite3.connect(source_path) as source:
+        with sqlite3.connect(target_path) as target:
+            source.backup(target)
+
+
+def _validate_sqlite_restore_file(path: str) -> None:
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+            quick_check = conn.execute("PRAGMA quick_check").fetchone()
+            if not quick_check or quick_check[0] != "ok":
+                raise ValueError("SQLite quick_check fehlgeschlagen.")
+            rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"Datei ist keine gültige SQLite-Datenbank: {exc}") from exc
+
+    tables = {row[0] for row in rows}
+    missing = sorted(MINIMUM_RESTORE_TABLES - tables)
+    if missing:
+        raise ValueError("Erwartete Tabellen fehlen: " + ", ".join(missing))
+
+
+def _remove_sqlite_sidecar_files(db_path: str) -> None:
+    for suffix in ("-wal", "-shm"):
+        try:
+            os.remove(db_path + suffix)
+        except FileNotFoundError:
+            pass
+
+
 @app.get("/backup/download")
-async def download_backup():
+async def download_backup(background_tasks: BackgroundTasks):
     """Lädt die aktuelle Datenbank als Backup-Datei herunter"""
     try:
         db_path = get_db_file_path()
@@ -115,12 +149,18 @@ async def download_backup():
         # Erstelle Backup-Dateinamen mit Zeitstempel
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_filename = f"aufsichtsplan_backup_{timestamp}.db"
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        tmp_file.close()
+        _create_sqlite_backup(db_path, tmp_file.name)
+        background_tasks.add_task(lambda path: os.path.exists(path) and os.remove(path), tmp_file.name)
         
         return FileResponse(
-            path=db_path,
+            path=tmp_file.name,
             filename=backup_filename,
             media_type="application/octet-stream"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Backup-Fehler: {str(e)}")
 
@@ -128,47 +168,68 @@ async def download_backup():
 @app.post("/backup/restore")
 async def restore_backup(file: UploadFile = File(...)):
     """Stellt die Datenbank aus einer Backup-Datei wieder her"""
+    temp_restore_path = None
     try:
         # Validiere Dateiname und -typ
-        if not file.filename or not file.filename.endswith('.db'):
+        if not file.filename or not file.filename.lower().endswith('.db'):
             raise HTTPException(status_code=400, detail="Nur .db-Dateien sind erlaubt")
         
         db_path = get_db_file_path()
-        backup_path = db_path + ".backup"
+        db_dir = os.path.dirname(os.path.abspath(db_path)) or os.getcwd()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{db_path}.backup_{timestamp}"
         
-        # Erstelle Backup der aktuellen DB
+        fd, temp_restore_path = tempfile.mkstemp(prefix="aufsichtsplan_restore_", suffix=".db", dir=db_dir)
+        with os.fdopen(fd, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        _validate_sqlite_restore_file(temp_restore_path)
+
+        # Erstelle Backup der aktuellen DB und behalte es als Rückfall-Datei.
         if os.path.exists(db_path):
-            shutil.copy2(db_path, backup_path)
+            try:
+                _create_sqlite_backup(db_path, backup_path)
+            except sqlite3.DatabaseError:
+                shutil.copy2(db_path, backup_path)
         
         try:
-            # Schreibe die hochgeladene Datei
-            content = await file.read()
-            with open(db_path, "wb") as f:
-                f.write(content)
+            engine.dispose()
+            _remove_sqlite_sidecar_files(db_path)
+            os.replace(temp_restore_path, db_path)
+            temp_restore_path = None
             
             # Teste die neue Datenbank durch eine einfache Abfrage
             with SessionLocal() as db:
                 db.execute(text("SELECT 1"))
+            Base.metadata.create_all(bind=engine)
             
-            # Entferne das Backup, da alles erfolgreich war
-            if os.path.exists(backup_path):
-                os.remove(backup_path)
-                
             return JSONResponse(content={
                 "message": "Datenbank erfolgreich wiederhergestellt",
-                "filename": file.filename
+                "filename": file.filename,
+                "safety_backup": backup_path if os.path.exists(backup_path) else None,
             })
             
         except Exception as e:
             # Stelle die ursprüngliche Datenbank wieder her
             if os.path.exists(backup_path):
-                shutil.move(backup_path, db_path)
+                engine.dispose()
+                _remove_sqlite_sidecar_files(db_path)
+                shutil.copy2(backup_path, db_path)
             raise HTTPException(status_code=400, detail=f"Ungültige Datenbank-Datei: {str(e)}")
             
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Ungültige Datenbank-Datei: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Restore-Fehler: {str(e)}")
+    finally:
+        if temp_restore_path and os.path.exists(temp_restore_path):
+            try:
+                os.remove(temp_restore_path)
+            except OSError:
+                pass
 
 
 
