@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
-from ..models import Assignment, DutySlot, Floor, Teacher
+from ..models import Assignment, DutySlot, Floor, RoomFloorMapping, Teacher, normalize_room_key
 
 if TYPE_CHECKING:
     from ortools.sat.python import cp_model
@@ -228,11 +228,35 @@ def _collect_day_periods(teacher: Teacher) -> Dict[int, frozenset[int]]:
     return {day: frozenset(hours) for day, hours in day_map.items()}
 
 
+def _collect_room_floor_periods(
+    teacher: Teacher,
+    room_floor_by_key: Dict[str, int],
+) -> Dict[Tuple[int, int], frozenset[int]]:
+    period_map: Dict[Tuple[int, int], set[int]] = defaultdict(set)
+    if not room_floor_by_key:
+        return {}
+
+    for lesson in teacher.lessons:
+        if lesson.weekday is None or lesson.hour is None:
+            continue
+        room_key = normalize_room_key(lesson.room)
+        if not room_key:
+            continue
+        floor_id = room_floor_by_key.get(room_key)
+        if floor_id is None:
+            continue
+        period_map[(int(lesson.weekday), int(lesson.hour))].add(int(floor_id))
+
+    return {period: frozenset(floor_ids) for period, floor_ids in period_map.items()}
+
+
 def _build_teacher_specs(
     teachers: Iterable[Teacher],
     teacher_spec_cls: Type["TeacherSpec"],
+    room_floor_by_key: Optional[Dict[str, int]] = None,
 ) -> List["TeacherSpec"]:
     specs: List["TeacherSpec"] = []
+    room_floor_lookup = room_floor_by_key or {}
     for teacher in teachers:
         target = 0
         if teacher.quota and teacher.quota.target_duties:
@@ -251,6 +275,7 @@ def _build_teacher_specs(
             floor_weights = None
 
         day_periods = _collect_day_periods(teacher)
+        room_floor_periods = _collect_room_floor_periods(teacher, room_floor_lookup)
         availability_days = len(day_periods)
         specs.append(
             teacher_spec_cls(
@@ -260,6 +285,7 @@ def _build_teacher_specs(
                 preferred_floor=teacher.preferred_floor_id,
                 floor_weights=floor_weights,
                 day_periods=day_periods,
+                room_floor_periods=room_floor_periods,
                 availability_days=availability_days,
                 nominal_target=target,
             )
@@ -578,7 +604,13 @@ def generate_assignments(
         logger.warning("Keine geeigneten Lehrkräfte mit Soll-Aufsichten gefunden.")
         return 0
 
-    teacher_specs = _build_teacher_specs(teachers, TeacherSpec)
+    room_floor_by_key: Dict[str, int] = {
+        mapping.room_key: int(mapping.floor_id)
+        for mapping in db.query(RoomFloorMapping).all()
+        if mapping.room_key
+    }
+
+    teacher_specs = _build_teacher_specs(teachers, TeacherSpec, room_floor_by_key)
     break_slots = _build_break_slots(start_date, end_date, floors, breaks_per_day, BreakSlotSpec)
 
     adjustments = _adjust_targets_for_total_need(teacher_specs, break_slots)

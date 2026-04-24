@@ -15,7 +15,16 @@ from sqlalchemy import and_, func, select
 from pydantic import BaseModel
 
 from ..database import get_db, Base, engine
-from ..models import Floor, DutySlot, Assignment, Teacher, AppSetting, TeacherLesson
+from ..models import (
+    Floor,
+    DutySlot,
+    Assignment,
+    Teacher,
+    AppSetting,
+    TeacherLesson,
+    RoomFloorMapping,
+    normalize_room_key,
+)
 from ..services.scheduler import generate_repeating_period_assignments
 from ..services.pdf_export import generate_pdf, generate_pdf_by_floor
 from ..services.gpu009_export import generate_gpu009
@@ -190,9 +199,71 @@ def _break_label(break_index: int) -> str:
     return f"Pause {break_index}"
 
 
+def _relevant_hours_for_break(break_index: int) -> List[int]:
+    if break_index == 1:
+        return [1]
+    if break_index == 2:
+        return [2, 3]
+    if break_index == 3:
+        return [4, 5]
+    if break_index == 4:
+        return [6, 7]
+    return []
+
+
+def _safe_plan_meta_value(value: str) -> str:
+    return (value or "").replace("|", "/").replace(";", "/").replace(",", " / ").strip()
+
+
+def _room_floor_hint_for_teacher(
+    teacher: Teacher,
+    weekday: int,
+    break_index: int,
+    floor_id: int,
+    room_floor_by_key: Dict[str, int],
+) -> Optional[str]:
+    if not room_floor_by_key:
+        return None
+
+    relevant_hours = set(_relevant_hours_for_break(break_index))
+    if not relevant_hours:
+        return None
+
+    for lesson in teacher.lessons or []:
+        if int(lesson.weekday) != weekday or int(lesson.hour) not in relevant_hours:
+            continue
+        room_key = normalize_room_key(lesson.room)
+        if not room_key or room_floor_by_key.get(room_key) != floor_id:
+            continue
+        room_name = (lesson.room or "").strip()
+        return _safe_plan_meta_value(room_name)
+    return None
+
+
+def _collect_imported_rooms(db: Session) -> List[str]:
+    rooms_by_key: Dict[str, str] = {}
+    rows = (
+        db.query(TeacherLesson.room)
+        .filter(TeacherLesson.room.isnot(None))
+        .distinct()
+        .all()
+    )
+    for (room,) in rows:
+        room_name = (room or "").strip()
+        room_key = normalize_room_key(room_name)
+        if room_key:
+            rooms_by_key[room_key] = room_name
+    return sorted(rooms_by_key.values(), key=lambda value: value.casefold())
+
+
 def build_week_grid(db: Session, start_date: date, breaks_per_day: int) -> List[List[List[str]]]:
     floors = db.query(Floor).order_by(Floor.order_index, Floor.name).all()
     end_date = start_date + timedelta(days=4)
+    room_floor_by_key: Dict[str, int] = {
+        mapping.room_key: int(mapping.floor_id)
+        for mapping in db.query(RoomFloorMapping).all()
+        if mapping.room_key
+    }
 
     teacher_day_counts: Dict[tuple[int, date], int] = {
         (teacher_id, duty_date): int(count)
@@ -223,6 +294,7 @@ def build_week_grid(db: Session, start_date: date, breaks_per_day: int) -> List[
                     teachers = (
                         db.query(Teacher)
                         .join(Assignment, Assignment.teacher_id == Teacher.id)
+                        .options(selectinload(Teacher.lessons))
                         .filter(Assignment.duty_slot_id == slot.id)
                         .order_by(Teacher.last_name, Teacher.first_name)
                         .all()
@@ -236,9 +308,17 @@ def build_week_grid(db: Session, start_date: date, breaks_per_day: int) -> List[
                         if teacher_day_counts.get((t.id, slot.date), 0) > 1:
                             warn_reasons.append("double-duty")
 
+                        room_hint = _room_floor_hint_for_teacher(t, weekday, b, int(f.id), room_floor_by_key)
+
+                        meta_parts: List[str] = []
                         warn_suffix = ""
                         if warn_reasons:
-                            warn_suffix = "|warn:" + ";".join(warn_reasons)
+                            meta_parts.append("warn:" + ";".join(warn_reasons))
+                        if room_hint:
+                            meta_parts.append(f"room-floor:{room_hint}")
+
+                        if meta_parts:
+                            warn_suffix = "|" + "|".join(meta_parts)
                         labels.append(f"{label}{warn_suffix}")
                 cell_lines.append(f"{f.name}: {', '.join(labels) if labels else '—'}")
             row.append(cell_lines)
@@ -308,7 +388,21 @@ def build_teacher_options(teachers: List[Teacher]) -> List[Dict[str, Any]]:
 @router.get("/floors")
 async def floors_get(request: Request, db: Session = Depends(get_db)):
     floors = db.query(Floor).order_by(Floor.order_index, Floor.name).all()
-    return templates.TemplateResponse("plan/floors.html", {"request": request, "floors": floors})
+    room_mappings = (
+        db.query(RoomFloorMapping)
+        .options(selectinload(RoomFloorMapping.floor))
+        .order_by(RoomFloorMapping.room_name)
+        .all()
+    )
+    return templates.TemplateResponse(
+        "plan/floors.html",
+        {
+            "request": request,
+            "floors": floors,
+            "room_mappings": room_mappings,
+            "imported_rooms": _collect_imported_rooms(db),
+        },
+    )
 
 
 @router.post("/floors")
@@ -342,6 +436,47 @@ async def floors_delete(floor_id: int = Form(...), db: Session = Depends(get_db)
     f = db.get(Floor, floor_id)
     if f:
         db.delete(f)
+        db.commit()
+    return RedirectResponse(url="/plan/floors", status_code=303)
+
+
+@router.post("/floors/rooms")
+async def floors_rooms_post(
+    floor_id: int = Form(...),
+    room_name: str = Form(""),
+    room_name_custom: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    floor = db.get(Floor, floor_id)
+    selected_room = (room_name_custom or "").strip() or (room_name or "").strip()
+    room_key = normalize_room_key(selected_room)
+
+    response = RedirectResponse(url="/plan/floors", status_code=303)
+    if floor is None:
+        response.set_cookie("flash", "Stockwerk nicht gefunden.", max_age=5)
+        return response
+    if not room_key:
+        response.set_cookie("flash", "Bitte einen Raum auswählen oder eintragen.", max_age=5)
+        return response
+
+    mapping = db.query(RoomFloorMapping).filter(RoomFloorMapping.room_key == room_key).one_or_none()
+    if mapping is None:
+        mapping = RoomFloorMapping(room_name=selected_room, room_key=room_key, floor_id=floor.id)
+        db.add(mapping)
+    else:
+        mapping.room_name = selected_room
+        mapping.floor_id = floor.id
+    db.commit()
+
+    response.set_cookie("flash", f"Raum {selected_room} ist {floor.name} zugeordnet.", max_age=5)
+    return response
+
+
+@router.post("/floors/rooms/delete")
+async def floors_rooms_delete(mapping_id: int = Form(...), db: Session = Depends(get_db)):
+    mapping = db.get(RoomFloorMapping, mapping_id)
+    if mapping:
+        db.delete(mapping)
         db.commit()
     return RedirectResponse(url="/plan/floors", status_code=303)
 

@@ -3,6 +3,11 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 
+def normalize_room_key(room_name: str | None) -> str:
+    value = (room_name or "").strip()
+    return " ".join(value.casefold().split())
+
+
 class Teacher(Base):
     __tablename__ = "teachers"
 
@@ -177,6 +182,22 @@ class Floor(Base):
     order_index = Column(Integer, nullable=False, default=0, index=True)
 
     duty_slots = relationship("DutySlot", back_populates="floor")
+    room_mappings = relationship("RoomFloorMapping", back_populates="floor", cascade="all, delete-orphan")
+
+
+class RoomFloorMapping(Base):
+    __tablename__ = "room_floor_mappings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_name = Column(String(100), nullable=False)
+    room_key = Column(String(100), nullable=False, unique=True, index=True)
+    floor_id = Column(Integer, ForeignKey("floors.id", ondelete="CASCADE"), nullable=False)
+
+    floor = relationship("Floor", back_populates="room_mappings")
+
+    __table_args__ = (
+        Index("ix_room_floor_mapping_floor_id", "floor_id"),
+    )
 
 
 class TeacherQuota(Base):

@@ -17,6 +17,7 @@ def _make_teacher(
     *,
     preferred_floor: int | None = None,
     prio_rank: int = 10,
+    room_floor_periods: dict[tuple[int, int], set[int]] | None = None,
 ) -> TeacherSpec:
     return TeacherSpec(
         id=teacher_id,
@@ -25,6 +26,10 @@ def _make_teacher(
         preferred_floor=preferred_floor,
         floor_weights=None,
         day_periods={day: frozenset(periods) for day, periods in periods_by_day.items()},
+        room_floor_periods={
+            period: frozenset(floor_ids)
+            for period, floor_ids in (room_floor_periods or {}).items()
+        },
         availability_days=len(periods_by_day),
         nominal_target=target,
     )
@@ -155,6 +160,73 @@ def test_floor_preference_is_respected() -> None:
     assert assigned_pairs == {(1, 1), (2, 2)}
     assert result.priority_cost == 0
     assert result.daily_excess == 0
+    assert result.total_shortfall == 0
+
+
+def test_room_floor_preference_is_respected_after_fairness() -> None:
+    teachers = [
+        _make_teacher(
+            1,
+            target=1,
+            periods_by_day={0: {2}},
+            room_floor_periods={(0, 2): {1}},
+        ),
+        _make_teacher(2, target=1, periods_by_day={0: {2}}),
+    ]
+    slot = _make_slot(
+        "slot-1",
+        dt=date(2024, 9, 2),
+        break_index=2,
+        before_period=2,
+        after_period=3,
+        needs={1: 1},
+    )
+
+    solver = BreakSupervisionSolver(
+        teachers=teachers,
+        break_slots=[slot],
+        floor_ids=[1],
+        fairness_band=None,
+        max_one_per_day=False,
+        time_limit_s=5.0,
+    )
+    result = solver.solve()
+
+    assert result.status in {"OPTIMAL", "FEASIBLE"}
+    assert {(assignment.teacher_id, assignment.floor_id) for assignment in result.assignments} == {(1, 1)}
+    assert result.total_shortfall == 0
+
+
+def test_room_floor_preference_is_not_hard_requirement() -> None:
+    teachers = [
+        _make_teacher(
+            1,
+            target=1,
+            periods_by_day={0: {2}},
+            room_floor_periods={(0, 2): {2}},
+        ),
+    ]
+    slot = _make_slot(
+        "slot-1",
+        dt=date(2024, 9, 2),
+        break_index=2,
+        before_period=2,
+        after_period=3,
+        needs={1: 1},
+    )
+
+    solver = BreakSupervisionSolver(
+        teachers=teachers,
+        break_slots=[slot],
+        floor_ids=[1],
+        fairness_band=None,
+        max_one_per_day=False,
+        time_limit_s=5.0,
+    )
+    result = solver.solve()
+
+    assert result.status in {"OPTIMAL", "FEASIBLE"}
+    assert {(assignment.teacher_id, assignment.floor_id) for assignment in result.assignments} == {(1, 1)}
     assert result.total_shortfall == 0
 
 

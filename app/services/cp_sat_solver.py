@@ -38,6 +38,7 @@ class TeacherSpec:
     preferred_floor: Optional[int] = None
     floor_weights: Optional[Dict[int, int]] = None
     day_periods: Dict[int, frozenset[int]] = field(default_factory=dict)
+    room_floor_periods: Dict[Tuple[int, int], frozenset[int]] = field(default_factory=dict)
     availability_days: int = 0
     nominal_target: int = 0
 
@@ -54,6 +55,21 @@ class TeacherSpec:
             return True
         if after_period is not None and after_period in periods:
             return True
+        return False
+
+    def has_adjacent_room_floor(
+        self,
+        day_index: int,
+        before_period: Optional[int],
+        after_period: Optional[int],
+        floor_id: int,
+    ) -> bool:
+        for period in (before_period, after_period):
+            if period is None:
+                continue
+            floor_ids = self.room_floor_periods.get((day_index, period))
+            if floor_ids and floor_id in floor_ids:
+                return True
         return False
 
 
@@ -203,7 +219,7 @@ class BreakSupervisionSolver:
         day_assignment_vars: Dict[Tuple[int, date], List[cp_model.IntVar]] = {}
         day_excess_terms: List[cp_model.IntVar] = []
         priority_terms: List[cp_model.IntVar] = []
-        preferred_hit_terms: List[cp_model.IntVar] = []
+        room_floor_hit_terms: List[cp_model.IntVar] = []
         max_cost = 0
 
         shortfall_vars: Dict[Tuple[str, int], cp_model.IntVar] = {}
@@ -229,8 +245,8 @@ class BreakSupervisionSolver:
                         priority_terms.append(var * cost)
                     if cost > max_cost:
                         max_cost = cost
-                    if teacher.preferred_floor is not None and teacher.preferred_floor == floor_id:
-                        preferred_hit_terms.append(var)
+                    if teacher.has_adjacent_room_floor(slot.day_index, slot.before_period, slot.after_period, floor_id):
+                        room_floor_hit_terms.append(var)
 
                 shortfall = model.NewIntVar(0, need, f"short_{slot.slot_id}_{floor_id}")
                 shortfall_vars[(slot.slot_id, floor_id)] = shortfall
@@ -315,11 +331,11 @@ class BreakSupervisionSolver:
         else:
             model.Add(P == 0)
 
-        preferred_hit_total = model.NewIntVar(0, total_need, "preferred_hit_total")
-        if preferred_hit_terms:
-            model.Add(preferred_hit_total == sum(preferred_hit_terms))
+        room_floor_hit_total = model.NewIntVar(0, total_need, "room_floor_hit_total")
+        if room_floor_hit_terms:
+            model.Add(room_floor_hit_total == sum(room_floor_hit_terms))
         else:
-            model.Add(preferred_hit_total == 0)
+            model.Add(room_floor_hit_total == 0)
 
         total_dev = model.NewIntVar(0, len(self.teachers) * deviation_cap * 5, "total_dev")
         total_dev_terms = []
@@ -461,46 +477,46 @@ class BreakSupervisionSolver:
                 fallback_status = status_phase2
                 fallback_status_name = status_name_phase2
 
-        # Phase 3: Bevorzugte Stockwerke maximal bedienen
-        if preferred_hit_terms:
-            solver_pref = cp_model.CpSolver()
-            solver_pref.parameters.max_time_in_seconds = self.time_limit_s
-            solver_pref.parameters.num_search_workers = self.num_workers
-            model.Maximize(preferred_hit_total)
-            status_phase3 = solver_pref.Solve(model)
-            status_name_phase3 = solver_pref.StatusName(status_phase3)
-            if status_phase3 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
-                logger.warning(
-                    "Präferenz-Optimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.",
-                    status_name_phase3,
-                )
-            else:
-                best_preferred_hits = int(solver_pref.Value(preferred_hit_total))
-                model.Add(preferred_hit_total == best_preferred_hits)
-                fallback_solver = solver_pref
-                fallback_status = status_phase3
-                fallback_status_name = status_name_phase3
-
-        # Phase 4: Fairness unter fixiertem Shortfall, Min-One und Präferenztreffern
+        # Phase 3: Fairness unter fixiertem Shortfall und Min-One
         solver_fair = cp_model.CpSolver()
         solver_fair.parameters.max_time_in_seconds = self.time_limit_s
         solver_fair.parameters.num_search_workers = self.num_workers
         model.Minimize(fairness_score)
-        status_phase4 = solver_fair.Solve(model)
-        status_name_phase4 = solver_fair.StatusName(status_phase4)
-        if status_phase4 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+        status_phase3 = solver_fair.Solve(model)
+        status_name_phase3 = solver_fair.StatusName(status_phase3)
+        if status_phase3 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
             logger.warning(
                 "Fairness-Optimierung konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.",
-                status_name_phase4,
+                status_name_phase3,
             )
         else:
             best_fairness = int(solver_fair.Value(fairness_score))
             model.Add(fairness_score == best_fairness)
             fallback_solver = solver_fair
-            fallback_status = status_phase4
-            fallback_status_name = status_name_phase4
+            fallback_status = status_phase3
+            fallback_status_name = status_name_phase3
 
-        # Phase 5: Prioritätskosten als finaler Tie-Breaker
+        # Phase 4: Raum-nahe Stockwerkstreffer als weichen Tie-Breaker maximieren.
+        if room_floor_hit_terms:
+            solver_room = cp_model.CpSolver()
+            solver_room.parameters.max_time_in_seconds = self.time_limit_s
+            solver_room.parameters.num_search_workers = self.num_workers
+            model.Maximize(room_floor_hit_total)
+            status_phase4 = solver_room.Solve(model)
+            status_name_phase4 = solver_room.StatusName(status_phase4)
+            if status_phase4 not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+                logger.warning(
+                    "Raum-Stockwerk-Präferenz konnte nicht abgeschlossen werden (Status: %s). Ergebnis aus voriger Phase wird verwendet.",
+                    status_name_phase4,
+                )
+            else:
+                best_room_floor_hits = int(solver_room.Value(room_floor_hit_total))
+                model.Add(room_floor_hit_total == best_room_floor_hits)
+                fallback_solver = solver_room
+                fallback_status = status_phase4
+                fallback_status_name = status_name_phase4
+
+        # Phase 5: Allgemeine Stockwerk-Prioritätskosten als nachrangiger Tie-Breaker
         solver2 = cp_model.CpSolver()
         solver2.parameters.max_time_in_seconds = self.time_limit_s
         solver2.parameters.num_search_workers = self.num_workers

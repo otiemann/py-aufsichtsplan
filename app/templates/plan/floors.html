@@ -65,6 +65,66 @@
     </table>
 </div>
 
+<div class="page-card info">
+    <h3>Räume zu Stockwerken zuordnen</h3>
+    <form method="post" action="/plan/floors/rooms" style="display: grid; grid-template-columns: 2fr 2fr 2fr auto; gap: 0.75rem; align-items: end;">
+        <div>
+            <label for="room_name"><strong>Raum aus Import</strong></label>
+            <select id="room_name" name="room_name">
+                <option value="">Raum auswählen</option>
+                {% for room in imported_rooms %}
+                <option value="{{ room }}">{{ room }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="room_name_custom"><strong>oder Raum eintragen</strong></label>
+            <input type="text" id="room_name_custom" name="room_name_custom" placeholder="z. B. R101">
+        </div>
+        <div>
+            <label for="room_floor_id"><strong>Stockwerk</strong></label>
+            <select id="room_floor_id" name="floor_id" required>
+                {% for f in floors %}
+                <option value="{{ f.id }}">{{ f.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Zuordnen</button>
+    </form>
+    <p style="margin-bottom: 0;">Freitext überschreibt die Auswahl. Raumcodes werden unabhängig von Groß-/Kleinschreibung wiedererkannt.</p>
+</div>
+
+<div class="page-card">
+    <h3>Raumzuordnungen</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Raum</th>
+                <th>Stockwerk</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mapping in room_mappings %}
+            <tr>
+                <td>{{ mapping.room_name }}</td>
+                <td>{{ mapping.floor.name if mapping.floor else '—' }}</td>
+                <td>
+                    <form method="post" action="/plan/floors/rooms/delete" onsubmit="return confirm('Zuordnung für Raum {{ mapping.room_name }} wirklich löschen?');">
+                        <input type="hidden" name="mapping_id" value="{{ mapping.id }}">
+                        <button type="submit" class="btn btn-danger" title="Raumzuordnung löschen">Löschen</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="3">Noch keine Räume zugeordnet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
 <div class="page-card warn">
     <p><strong>Hinweis:</strong> Die Reihenfolge bestimmt die Anzeige im Plan. Der Bedarf pro Pause steuert die Mindestanzahl benötigter Lehrkräfte je Bereich.</p>
 </div>

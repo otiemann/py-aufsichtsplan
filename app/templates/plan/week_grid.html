@@ -85,6 +85,7 @@
     <div id="unsavedBanner" class="unsaved-banner">⚠️ Änderungen nicht gespeichert</div>
     <div class="plan-legend">
         <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e3f2fd;border:1px solid #2196f3;"></span> Reguläre Einteilung</span>
+        <span class="legend-chip"><span style="display:inline-flex;width:16px;height:16px;border-radius:50%;background:#eef6ff;border:1px solid #60a5fa;color:#1d4ed8;align-items:center;justify-content:center;font-weight:700;font-size:0.75rem;">i</span> Raum-Stockwerk-Präferenz</span>
         <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fdecea;border:1px solid #e74c3c;"></span> Warnung</span>
         <span class="legend-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fdecea;border:1px solid #e74c3c;"></span> Unbesetzt</span>
         <span class="legend-chip">⚠️ Hinweis: Einteilung prüfen</span>
@@ -120,11 +121,20 @@
                                     {% if teacher_raw %}
                                         {% set parts = teacher_raw.split('|') %}
                                         {% set teacher_label = parts[0].strip() %}
-                                        {% set warn_meta = parts[1].strip() if parts|length > 1 else '' %}
-                                        {% set teacher_warn = warn_meta.startswith('warn') %}
-                                        {% set warn_parts = warn_meta.split(':', 1) if teacher_warn else [] %}
-                                        {% set warn_payload = warn_parts[1] if warn_parts and warn_parts|length > 1 else '' %}
-                                        {% set warn_reasons = warn_payload.split(';') if warn_payload else [] %}
+                                        {% set meta_ns = namespace(warn_reasons=[], room_hint='') %}
+                                        {% for meta in parts[1:] %}
+                                            {% set meta_value = meta.strip() %}
+                                            {% if meta_value.startswith('warn:') %}
+                                                {% set warn_payload = meta_value.split(':', 1)[1] %}
+                                                {% set meta_ns.warn_reasons = warn_payload.split(';') if warn_payload else [] %}
+                                            {% elif meta_value.startswith('room-floor:') %}
+                                                {% set meta_ns.room_hint = meta_value.split(':', 1)[1].strip() %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% set warn_reasons = meta_ns.warn_reasons %}
+                                        {% set room_hint = meta_ns.room_hint %}
+                                        {% set teacher_warn = warn_reasons|length > 0 %}
+                                        {% set teacher_room_hint = room_hint != '' %}
                                         {% set warn_ns = namespace(messages=[], details=[]) %}
                                         {% for reason in warn_reasons %}
                                             {% if reason == 'no-lesson' %}
@@ -141,16 +151,20 @@
                                         {% set warn_summary = warn_ns.messages|join(', ') if warn_ns.messages else 'Warnung' %}
                                         {% set warn_detail_text = warn_ns.details|join(' | ') if warn_ns.details else warn_summary %}
                                         {% set warn_tooltip = '⚠️ ' ~ warn_detail_text %}
+                                        {% set room_tooltip = 'Raum-Stockwerk-Präferenz: Unterricht direkt vor/nach dieser Pause in Raum ' ~ room_hint ~ ', der diesem Stockwerk zugeordnet ist.' %}
                                         {% set chip_base_style = 'display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 6px; border-radius: 12px; font-size: 0.9em; cursor: move; user-select: none;' %}
                                         {% if teacher_warn %}
                                             {% set chip_style = chip_base_style ~ ' background: #fdecea; border: 1px solid #e74c3c;' %}
                                         {% else %}
                                             {% set chip_style = chip_base_style ~ ' background: #e3f2fd; border: 1px solid #2196f3;' %}
                                         {% endif %}
-                                        <span class="teacher-chip{% if teacher_warn %} teacher-chip-warn{% endif %}" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher_label }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-warning="{{ warn_reasons|join(';') if teacher_warn else '' }}" {% if teacher_warn %}title="{{ warn_tooltip }}" aria-label="{{ warn_tooltip }}"{% endif %} style="{{ chip_style }}">
+                                        <span class="teacher-chip{% if teacher_warn %} teacher-chip-warn{% endif %}{% if teacher_room_hint %} teacher-chip-room-match{% endif %}" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-teacher="{{ teacher_label }}" data-floor="{{ floor_name.strip() }}" data-day="{{ d_idx }}" data-break="{{ b }}" data-warning="{{ warn_reasons|join(';') if teacher_warn else '' }}" data-room-floor="{{ room_hint if teacher_room_hint else '' }}" {% if teacher_warn %}title="{{ warn_tooltip }}" aria-label="{{ warn_tooltip }}"{% endif %} style="{{ chip_style }}">
                                         <span class="teacher-chip-label">{{ teacher_label }}</span>
                                             {% if teacher_warn %}
                                                 <span class="teacher-warning" {% if teacher_warn %}title="{{ warn_tooltip }}"{% endif %} style="color: #e74c3c; font-weight: bold;">!</span>
+                                            {% endif %}
+                                            {% if teacher_room_hint %}
+                                                <span class="teacher-room-hint" title="{{ room_tooltip }}" aria-label="{{ room_tooltip }}" style="display:inline-flex;width:16px;height:16px;border-radius:50%;background:#eef6ff;border:1px solid #60a5fa;color:#1d4ed8;align-items:center;justify-content:center;font-weight:700;font-size:0.75rem;line-height:1;">i</span>
                                             {% endif %}
                                             <button type="button" class="remove-teacher-btn" onclick="removeTeacher(event)" title="Lehrkraft entfernen" style="border: none; background: transparent; color: #c0392b; font-weight: bold; cursor: pointer; padding: 0; line-height: 1; font-size: 1rem;">×</button>
                                         </span>
@@ -1331,12 +1345,19 @@
     }
 
     // Hover-Effekte für bessere UX
+    function getChipBackground(chip) {
+        if (chip && chip.classList.contains('teacher-chip-warn')) {
+            return '#fdecea';
+        }
+        return '#e3f2fd';
+    }
+
     document.addEventListener('mouseover', function(e) {
         const chip = e.target.closest('.teacher-chip');
         if (!chip) {
             return;
         }
-        chip.style.background = '#bbdefb';
+        chip.style.background = chip.classList.contains('teacher-chip-warn') ? '#fbd5cf' : '#bbdefb';
         chip.style.transform = 'scale(1.05)';
     });
 
@@ -1348,7 +1369,7 @@
         if (chip.contains(e.relatedTarget)) {
             return;
         }
-        chip.style.background = '#e3f2fd';
+        chip.style.background = getChipBackground(chip);
         chip.style.transform = 'scale(1)';
     });
 
